@@ -1,19 +1,51 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Panduhz Financial Tracker</title>
-    <link rel="stylesheet" href="./style.css">
-    <link rel="icon" href="./favicon.ico" type="image/x-icon">
-  </head>
-  <body>
-    <main>
-      <h1>Welcome to Panduhz Password Manager</h1>
-      <h2>Modal Login Form</h2>
+<head>
+  <meta charset="UTF-8">
+  <title>Azure AD B2C Authentication Example</title>
+</head>
+<body>
 
+  <h1>Welcome to My App</h1>
+  
+  <p id="welcomeMessage">Please sign in to continue.</p>
 
-    </main>
-  </body>
+  <!-- Buttons for sign-in and sign-out -->
+  <button id="signInButton" onclick="signIn()">Sign In</button>
+  <button id="signOutButton" onclick="signOut()" style="display: none;">Sign Out</button>
+
+  <!-- Include the MSAL.js library -->
+  <script src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
+
+  <!-- Include your external JavaScript file -->
+  <script src="auth.js"></script>
+
+  <script>
+    // Simple UI logic to show/hide buttons based on authentication status
+    const signInButton = document.getElementById('signInButton');
+    const signOutButton = document.getElementById('signOutButton');
+    const welcomeMessage = document.getElementById('welcomeMessage');
+
+    function updateUIAfterLogin(account) {
+      welcomeMessage.textContent = `Welcome, ${account.username}!`;
+      signInButton.style.display = 'none';
+      signOutButton.style.display = 'block';
+    }
+
+    function updateUIAfterLogout() {
+      welcomeMessage.textContent = 'Please sign in to continue.';
+      signInButton.style.display = 'block';
+      signOutButton.style.display = 'none';
+    }
+
+    // Check if user is already logged in when the page loads
+    const currentAccounts = msalInstance.getAllAccounts();
+    if (currentAccounts && currentAccounts.length > 0) {
+      updateUIAfterLogin(currentAccounts[0]);
+    } else {
+      updateUIAfterLogout();
+    }
+  </script>
+
+</body>
 </html>

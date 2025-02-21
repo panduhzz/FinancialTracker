@@ -2,10 +2,9 @@
 const msalConfig = {
     auth: {
       clientId: 'e8c1227e-f95c-4a0a-bf39-f3ce4c78c781', // Replace with your actual client ID
-      authority: 'https://YOUR_TENANT_NAME.b2clogin.com/YOUR_TENANT_NAME.onmicrosoft.com/B2C_1_SIGNUP_SIGNIN', // Replace with your tenant name and policy
-      knownAuthorities: ['YOUR_TENANT_NAME.b2clogin.com'],
-      redirectUri: 'https://yourapp.com', // Replace with your redirect URI (e.g., 'http://localhost:3000' for local testing)
-      postLogoutRedirectUri: 'https://yourapp.com', // Replace accordingly
+      authority: 'https://PanduhzProject.b2clogin.com/PanduhzProject.onmicrosoft.com/testonsite', // Replace with your tenant name and policy
+      knownAuthorities: ['PanduhzProject.b2clogin.com'],
+      redirectUri: 'https://black-sand-0fa8bd51e.6.azurestaticapps.net/', // Replace with your redirect URI (e.g., 'http://localhost:3000' for local testing)
     },
   };
   
