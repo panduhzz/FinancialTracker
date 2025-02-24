@@ -44,6 +44,20 @@ const msalConfig = {
     msalInstance.logout();
   }
   
+  // Function to initialize the UI on page load
+  function initializeUI() {
+    const familyName = localStorage.getItem('familyName');
+    const givenName = localStorage.getItem('givenName');
+    if (familyName && givenName) {
+      updateUIWithUserInfo(familyName, givenName);
+    } else {
+      welcomeMessage.textContent = 'Please sign in to continue.';
+    }
+  }
+  
+  // Call initializeUI when the page loads
+  window.onload = initializeUI;
+
   // Function to update the UI after login
   function updateUIAfterLogin(familyName, givenName) {
     const welcomeMessage = document.getElementById('welcomeMessage');
