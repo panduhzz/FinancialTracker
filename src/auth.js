@@ -28,6 +28,9 @@ const msalConfig = {
         console.log(familyName);
         const givenName = account.idTokenClaims.given_name;
         console.log(givenName);
+        // Store user information in local storage
+        localStorage.setItem('familyName', familyName);
+        localStorage.setItem('givenName', givenName);
         updateUIAfterLogin(familyName, givenName);
       })
       .catch(error => {
