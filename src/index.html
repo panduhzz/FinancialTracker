@@ -27,7 +27,7 @@
     const welcomeMessage = document.getElementById('welcomeMessage');
 
     function newPageAfterLogin(account) {
-      welcomeMessage.textContent = `Welcome, ${account.given_name}!`;
+      welcomeMessage.textContent = `Welcome, ${givenName} ${familyName}!`;
       signInButton.style.display = 'none';
       signOutButton.style.display = 'block';
     }
