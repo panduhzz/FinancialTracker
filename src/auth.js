@@ -25,7 +25,7 @@ const msalConfig = {
         const account = response.account;
         const familyName = account.idTokenClaims.family_name;
         const givenName = account.idTokenClaims.given_name
-        updateUIAfterLogin(response.account);
+        updateUIAfterLogin(familyName, givenName);
       })
       .catch(error => {
         // Handle login error

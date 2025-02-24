@@ -26,7 +26,7 @@
     const signOutButton = document.getElementById('signOutButton');
     const welcomeMessage = document.getElementById('welcomeMessage');
 
-    function newPageAfterLogin(account) {
+    function newPageAfterLogin(familyName, givenName) {
       welcomeMessage.textContent = `Welcome, ${givenName} ${familyName}!`;
       signInButton.style.display = 'none';
       signOutButton.style.display = 'block';
