@@ -42,6 +42,8 @@ const msalConfig = {
   // Implement logout function
   function signOut() {
     msalInstance.logout();
+    //clear out local storage so name is not stored any longer
+    localStorage.clear();
   }
   
   // Function to initialize the UI on page load
@@ -56,7 +58,13 @@ const msalConfig = {
   }
   
   // Call initializeUI when the page loads
-  window.onload = initializeUI;
+  window.onload = function() {
+    if (currentAccounts) {
+      initializeUI();
+    } else {
+      updateUIAfterLogOut();
+    }
+  }
 
   // Function to update the UI after login
   function updateUIAfterLogin(familyName, givenName) {
