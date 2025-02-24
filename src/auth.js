@@ -49,7 +49,7 @@ const msalConfig = {
     const familyName = localStorage.getItem('familyName');
     const givenName = localStorage.getItem('givenName');
     if (familyName && givenName) {
-      updateUIWithUserInfo(familyName, givenName);
+      updateUIAfterLogin(familyName, givenName);
     } else {
       welcomeMessage.textContent = 'Please sign in to continue.';
     }
