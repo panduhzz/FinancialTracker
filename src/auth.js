@@ -23,8 +23,11 @@ const msalConfig = {
         console.log('Login successful!', response);
         // You can store user information or tokens here
         const account = response.account;
+        console.log(account);
         const familyName = account.idTokenClaims.family_name;
-        const givenName = account.idTokenClaims.given_name
+        console.log(familyName);
+        const givenName = account.idTokenClaims.given_name;
+        console.log(givenName);
         updateUIAfterLogin(familyName, givenName);
       })
       .catch(error => {
