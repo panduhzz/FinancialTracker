@@ -44,7 +44,7 @@ const msalConfig = {
   // Function to update the UI after login
   function updateUIAfterLogin(familyName, givenName) {
     const welcomeMessage = document.getElementById('welcomeMessage');
-    welcomeMessage.textContent = `Welcome, ${account.username}!`;
+    welcomeMessage.textContent = `Welcome, ${givenName} ${familyName}!`;
     // Show authenticated content, hide sign-in button, etc.
   }
   
