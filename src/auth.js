@@ -47,7 +47,7 @@ const msalConfig = {
   }
   
   // Function to initialize the UI on page load
-  function initializeUI() {
+  /*function initializeUI() {
     const familyName = localStorage.getItem('familyName');
     const givenName = localStorage.getItem('givenName');
     if (familyName && givenName) {
@@ -55,7 +55,7 @@ const msalConfig = {
     } else {
       welcomeMessage.textContent = 'Please sign in to continue.';
     }
-  }
+  }*/
   
   // Call initializeUI when the page loads
   /*window.onload = function() {
