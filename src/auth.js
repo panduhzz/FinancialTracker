@@ -58,14 +58,15 @@ const msalConfig = {
   }
   
   // Call initializeUI when the page loads
-  window.onload = function() {
+  /*window.onload = function() {
     if (currentAccounts) {
       initializeUI();
     } else {
       updateUIAfterLogOut();
     }
   }
-
+  */
+ 
   // Function to update the UI after login
   function updateUIAfterLogin(familyName, givenName) {
     window.location.replace("/loggedIn.html")
