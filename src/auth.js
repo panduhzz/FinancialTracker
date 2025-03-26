@@ -82,7 +82,7 @@ const msalConfig = {
   const accessTokenRequest = {
     scopes: ["user.read"],
     account: account,
-  }
+  };
   
   function checkToken(){
     const accountSession = msalInstance.getAllAccounts();
