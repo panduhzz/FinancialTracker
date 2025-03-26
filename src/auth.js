@@ -71,7 +71,7 @@ const msalConfig = {
   function updateUIAfterLogin(familyName, givenName) {
     window.location.replace("/loggedIn.html")
     console.log('In updateUIAfterLogin')
-    const accountSession = msalInstance.getAccount();
+    const accountSession = msalInstance.getAllAccounts();
     console.log(accountSession)
     //console.log(accountSession);
     const welcomeMessage = document.getElementById('signedInMessage');
@@ -80,9 +80,10 @@ const msalConfig = {
   }
   
   // Check if user is already logged in
+  /*
   const currentAccounts = msalInstance.getAllAccounts();
   if (currentAccounts && currentAccounts.length > 0) {
     console.log('User is already logged in.');
     updateUIAfterLogin(currentAccounts[0]);
-  }
+  } */
   
