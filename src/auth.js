@@ -69,7 +69,7 @@ const msalConfig = {
 
   // Function to update the UI after login
   function updateUIAfterLogin(familyName, givenName) {
-    window.location.replace("/loggedIn.html")
+    //window.location.replace("/loggedIn.html")
     console.log('In updateUIAfterLogin')
     checkToken()
     //console.log(accountSession);
