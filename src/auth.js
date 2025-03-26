@@ -79,15 +79,13 @@ const msalConfig = {
 
   }
 
-  const accessTokenRequest = {
-    scopes: ["user.read"],
-    account: account,
-  };
+
   
   function checkToken(){
+    console.log("Checking token")
     const accountSession = msalInstance.getAllAccounts();
     console.log(accountSession)
-    const token = msalInstance.acquireTokenSilent(accessTokenRequest)
+    const token = msalInstance.acquireTokenSilent()
     console.log(token)
   }
   
