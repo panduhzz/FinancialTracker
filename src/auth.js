@@ -10,6 +10,9 @@ const msalConfig = {
   
   // Initialize MSAL instance
   const msalInstance = new msal.PublicClientApplication(msalConfig);
+
+  //enabling events to be utilized in code
+  msalInstance.enableAccountStorageEvents();
   
   // Implement login function
   function signIn() {
@@ -31,13 +34,23 @@ const msalConfig = {
         // Store user information in local storage
         localStorage.setItem('familyName', familyName);
         localStorage.setItem('givenName', givenName);
-        updateUIAfterLogin(familyName, givenName);
       })
       .catch(error => {
         // Handle login error
         console.error('Login failed:', error);
       });
   }
+  msalInstance.addEventCallback((message) => {
+    if (message.eventType === EventType.ACCOUNT_ADDED) {
+      // Update UI with new account
+  } else if (message.eventType === EventType.ACCOUNT_REMOVED) {
+      // Update UI with account logged out
+  } else if (message.eventType === EventType.ACTIVE_ACCOUNT_CHANGED) {
+      const accountInfo = msalInstance.getActiveAccount();
+      // Update UI with new active account info
+      window.location.replace("/loggedIn.html")
+  }
+  })
   
   // Implement logout function
   function signOut() {
@@ -69,7 +82,7 @@ const msalConfig = {
 
   // Function to update the UI after login
   function updateUIAfterLogin(familyName, givenName) {
-    //window.location.replace("/loggedIn.html")
+    window.location.replace("/loggedIn.html") //need to change the location of this, once this runs everything else after does not run.
     console.log('In updateUIAfterLogin')
     checkToken()
     //console.log(accountSession);
@@ -79,8 +92,6 @@ const msalConfig = {
 
   }
 
-
-  
   function checkToken(){
     console.log("Checking token")
     const accountSession = msalInstance.getAllAccounts();
