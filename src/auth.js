@@ -1,3 +1,5 @@
+import { EventType } from "@azure/msal-browser";
+
 // Include the MSAL.js configuration and initialization
 const msalConfig = {
     auth: {
