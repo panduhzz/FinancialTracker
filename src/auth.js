@@ -44,7 +44,7 @@ const msalConfig = {
 
   msalInstance.addEventCallback((message) => {
     if (message.eventType === msal.EventType.ACCOUNT_ADDED) {
-      // Update UI with new account
+      console.log("Account Added")
   }
 });
   
