@@ -43,16 +43,10 @@ const msalConfig = {
   };
 
   msalInstance.addEventCallback((message) => {
-    if (message.eventType === EventType.ACCOUNT_ADDED) {
+    if (message.eventType === msal.EventType.ACCOUNT_ADDED) {
       // Update UI with new account
-  } else if (message.eventType === EventType.ACCOUNT_REMOVED) {
-      // Update UI with account logged out
-  } else if (message.eventType === EventType.ACTIVE_ACCOUNT_CHANGED) {
-      const accountInfo = msalInstance.getActiveAccount();
-      // Update UI with new active account info
-      window.location.replace("/loggedIn.html")
   }
-  })
+});
   
   // Implement logout function
   function signOut() {
