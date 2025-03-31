@@ -40,7 +40,8 @@ const msalConfig = {
         // Handle login error
         console.error('Login failed:', error);
       });
-  }
+  };
+
   msalInstance.addEventCallback((message) => {
     if (message.eventType === EventType.ACCOUNT_ADDED) {
       // Update UI with new account
