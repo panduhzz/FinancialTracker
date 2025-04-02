@@ -46,6 +46,7 @@ const msalConfig = {
     if (message.eventType === msal.EventType.LOGIN_SUCCESS) {
         console.log("Account added:", message.payload);
         window.location.replace("/loggedIn.html")
+        conseole.log("payload:" + message.payload)
     }
     //can add else if statements for different EventTypes. Don't see a need at the moment for other ones.
 });
