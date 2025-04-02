@@ -45,12 +45,9 @@ const msalConfig = {
   msalInstance.addEventCallback((message) => {
     if (message.eventType === msal.EventType.LOGIN_SUCCESS) {
         console.log("Account added:", message.payload);
-    } else if (message.eventType === msal.EventType.ACCOUNT_REMOVED) {
-        console.log("Account removed:", message.payload);
-    } else if (message.eventType === msal.EventType.ACTIVE_ACCOUNT_CHANGED) {
-        const accountInfo = msalInstance.getActiveAccount();
-        console.log("Active account changed:", accountInfo);
+        window.location.replace("/loggedIn.html")
     }
+    //can add else if statements for different EventTypes. Don't see a need at the moment for other ones.
 });
   
   // Implement logout function
