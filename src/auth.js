@@ -44,7 +44,9 @@ const msalConfig = {
 
   msalInstance.addEventCallback((message) => {
     if (message.eventType === msal.EventType.LOGIN_SUCCESS) {
-      updateUIAfterLogin(familyName, givenName)
+      console.log("Account added:", message.payload);
+      updateUIAfterLogin(familyName, givenName);
+      console.log("payload:" + message.payload);
     }
     //can add else if statements for different EventTypes. Don't see a need at the moment for other ones.
 });
