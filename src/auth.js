@@ -45,6 +45,8 @@ const msalConfig = {
   msalInstance.addEventCallback((message) => {
     if (message.eventType === msal.EventType.LOGIN_SUCCESS) {
       console.log("Account added:", message.payload);
+      const familyName = localStorage.getItem('familyName');
+      const givenName = localStorage.getItem('givenName');
       updateUIAfterLogin(familyName, givenName);
       console.log("payload:" + message.payload);
     }
