@@ -15,4 +15,25 @@
 
     <p id="signedInMessage">Welcome in!</p>
     
+    <script>
+        // Log user information when the page loads
+        window.onload = function() {
+            
+            const accountSession = msalInstance.getAllAccounts();
+            
+            // Also log the account information from MSAL
+
+            console.log('User logged in successfully!');
+            console.log('First Name:', accountSession[0].idTokenClaims.given_name);
+            console.log('Last Name:', accountSession[0].idTokenClaims.family_name);
+            if (accountSession && accountSession.length > 0) {
+                const account = accountSession[0];
+                console.log('Account Details:', account);
+                if (account.idTokenClaims && account.localAccountId) {
+                    console.log('OID:', account.localAccountId);
+                }
+            }
+        };
+    </script>
 </body>
+</html>
