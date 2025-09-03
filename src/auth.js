@@ -5,11 +5,13 @@ const msalConfig = {
       clientId: 'e8c1227e-f95c-4a0a-bf39-f3ce4c78c781', // Replace with your actual client ID
       authority: 'https://PanduhzProject.b2clogin.com/PanduhzProject.onmicrosoft.com/B2C_1_testonsiteflow', // Replace with your tenant name and policy
       knownAuthorities: ['PanduhzProject.b2clogin.com'],
-      redirectUri: 'https://black-sand-0fa8bd51e.6.azurestaticapps.net/', // Replace with your redirect URI (e.g., 'http://localhost:3000' for local testing)
+      redirectUri: window.location.origin,
     },
   };
   
   // Initialize MSAL instance
+  
+
   const msalInstance = new msal.PublicClientApplication(msalConfig);
 
   //enabling events to be utilized in code
@@ -109,3 +111,4 @@ const msalConfig = {
     updateUIAfterLogin(currentAccounts[0]);
   } */
   
+// Function to determine redirect URI based on environment
