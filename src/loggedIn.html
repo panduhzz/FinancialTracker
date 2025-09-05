@@ -2,38 +2,136 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Welcome to Panduhz PW Tracker</title>
+  <title>Welcome to Panduhz Financial Tracker</title>
+  <link rel="stylesheet" href="loggedIn.css">
 </head>
 <body>
-    <h1>You have successfully logged in</h1>
-
-    <!-- Include the MSAL.js library -->
-    <script src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
-
-    <!-- Include your external JavaScript file -->
-    <script src="auth.js"></script>
-
-    <p id="signedInMessage">Welcome in!</p>
+  <div class="container">
+    <div class="welcome-header">
+      <h1 class="welcome-title">Welcome to Panduhz Financial Tracker</h1>
+      <p class="welcome-subtitle">Your personal finance management hub</p>
+    </div>
     
-    <script>
-        // Log user information when the page loads
-        window.onload = function() {
-            
-            const accountSession = msalInstance.getAllAccounts();
-            
-            // Also log the account information from MSAL
+    <div class="user-info">
+      <div class="user-avatar" id="userAvatar">👤</div>
+      <h2 class="user-name" id="userName">Loading...</h2>
+      <p class="user-email" id="userEmail">Loading...</p>
+    </div>
+    
+    <div class="action-buttons">
+      <button class="btn" onclick="startFinancialTracking()">Start Tracking</button>
+      <button class="btn btn-secondary" onclick="signOut()">Sign Out</button>
+    </div>
+    
+    <div class="features-preview">
+      <h3 style="text-align: center; color: #333; margin-bottom: 20px;">Coming Soon</h3>
+      <div class="feature-item">
+        <div class="feature-icon">��</div>
+        <div class="feature-text">Manage multiple bank accounts</div>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">��</div>
+        <div class="feature-text">Track income and expenses</div>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">��</div>
+        <div class="feature-text">View spending analytics</div>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">��</div>
+        <div class="feature-text">Set and track financial goals</div>
+      </div>
+    </div>
+  </div>
 
-            console.log('User logged in successfully!');
-            console.log('First Name:', accountSession[0].idTokenClaims.given_name);
-            console.log('Last Name:', accountSession[0].idTokenClaims.family_name);
-            if (accountSession && accountSession.length > 0) {
-                const account = accountSession[0];
-                console.log('Account Details:', account);
-                if (account.idTokenClaims && account.localAccountId) {
-                    console.log('OID:', account.localAccountId);
-                }
-            }
+  <!-- Include the MSAL.js library -->
+  <script src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
+
+  <!-- Include your external JavaScript file -->
+  <script src="auth.js"></script>
+
+  <script>
+    // Initialize when page loads
+    window.onload = function() {
+      
+      if (!window.msalInstance) {
+        const msalConfig = {
+          auth: {
+            clientId: 'e8c1227e-f95c-4a0a-bf39-f3ce4c78c781',
+            authority: 'https://PanduhzProject.b2clogin.com/PanduhzProject.onmicrosoft.com/B2C_1_testonsiteflow',
+            knownAuthorities: ['PanduhzProject.b2clogin.com'],
+            redirectUri: window.location.origin,
+          },
         };
-    </script>
+        
+        window.msalInstance = new msal.PublicClientApplication(msalConfig);
+        window.msalInstance.enableAccountStorageEvents();
+      }
+      
+      const accountSession = window.msalInstance.getAllAccounts();
+      
+      if (accountSession && accountSession.length > 0) {
+        const account = accountSession[0];
+        console.log('Account Details:', account);
+        
+        if (account.idTokenClaims) {
+          // Get user information from token claims
+          const firstName = account.idTokenClaims.given_name || 'User';
+          const lastName = account.idTokenClaims.family_name || '';
+          const email = account.idTokenClaims.email || 'No email available';
+          const userId = account.idTokenClaims.sub;
+          
+          // Update the UI with user information
+          updateUserInterface(firstName, lastName, email, userId);
+          
+          // Log user information for debugging
+          console.log('User logged in successfully!');
+          console.log('First Name:', firstName);
+          console.log('Last Name:', lastName);
+          console.log('Email:', email);
+          console.log('User ID:', userId);
+        }
+      } else {
+        // If no account found, redirect to login
+        window.location.replace('/index.html');
+      }
+    };
+
+    function updateUserInterface(firstName, lastName, email, userId) {
+      // Update user name
+      const userNameElement = document.getElementById('userName');
+      userNameElement.textContent = `Welcome, ${firstName} ${lastName}!`;
+      
+      // Update user email
+      const userEmailElement = document.getElementById('userEmail');
+      userEmailElement.textContent = email;
+      
+      // Update avatar with first letter of first name
+      const userAvatarElement = document.getElementById('userAvatar');
+      userAvatarElement.textContent = firstName.charAt(0).toUpperCase();
+      
+      // Store user information in localStorage for future use
+      localStorage.setItem('userId', userId);
+      localStorage.setItem('firstName', firstName);
+      localStorage.setItem('lastName', lastName);
+      localStorage.setItem('email', email);
+    }
+
+    function startFinancialTracking() {
+      // Placeholder for future functionality
+      alert('Financial tracking features coming soon! This will be where you can add bank accounts and track your finances.');
+    }
+
+    function signOut() {
+      // Call the signOut function from auth.js
+      if (typeof signOut === 'function') {
+        signOut();
+      } else {
+        // Fallback if signOut is not available
+        localStorage.clear();
+        window.location.replace('/index.html');
+      }
+    }
+  </script>
 </body>
 </html>

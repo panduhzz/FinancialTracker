@@ -1,0 +1,141 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .container {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    padding: 40px;
+    max-width: 500px;
+    width: 90%;
+    text-align: center;
+  }
+  
+  .welcome-header {
+    margin-bottom: 30px;
+  }
+  
+  .welcome-title {
+    color: #333;
+    font-size: 2.5em;
+    margin: 0 0 10px 0;
+    font-weight: 300;
+  }
+  
+  .welcome-subtitle {
+    color: #666;
+    font-size: 1.1em;
+    margin: 0;
+  }
+  
+  .user-info {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 20px;
+    margin: 20px 0;
+  }
+  
+  .user-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    margin: 0 auto 15px;
+    background: #667eea;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 2em;
+    font-weight: bold;
+  }
+  
+  .user-name {
+    font-size: 1.3em;
+    color: #333;
+    margin: 0 0 5px 0;
+    font-weight: 500;
+  }
+  
+  .user-email {
+    color: #666;
+    font-size: 0.9em;
+    margin: 0;
+  }
+  
+  .action-buttons {
+    margin-top: 30px;
+  }
+  
+  .btn {
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 12px 30px;
+    border-radius: 25px;
+    font-size: 1em;
+    cursor: pointer;
+    margin: 0 10px;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: inline-block;
+  }
+  
+  .btn:hover {
+    background: #5a6fd8;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+  }
+  
+  .btn-secondary {
+    background: #6c757d;
+  }
+  
+  .btn-secondary:hover {
+    background: #5a6268;
+  }
+  
+  .features-preview {
+    margin-top: 30px;
+    text-align: left;
+  }
+  
+  .feature-item {
+    display: flex;
+    align-items: center;
+    margin: 15px 0;
+    padding: 10px;
+    border-radius: 8px;
+    background: #f8f9fa;
+  }
+  
+  .feature-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #667eea;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    margin-right: 15px;
+    font-size: 1.2em;
+  }
+  
+  .feature-text {
+    color: #333;
+    font-size: 0.95em;
+  }
+  
+  .loading {
+    display: none;
+    color: #666;
+    font-style: italic;
+  }
