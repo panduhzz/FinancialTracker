@@ -66,15 +66,6 @@ function signIn() {
     });
 };
 
-// Implement logout function
-function signOut() {
-  if (window.msalInstance) {
-    window.msalInstance.logout();
-    //clear out local storage so name is not stored any longer
-    localStorage.clear();
-  }
-}
-
 // Function to update the UI after login
 function updateUIAfterLogin(familyName, givenName) {
   window.location.replace("/loggedIn.html") //need to change the location of this, once this runs everything else after does not run.

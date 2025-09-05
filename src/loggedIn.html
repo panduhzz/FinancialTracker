@@ -20,7 +20,7 @@
     
     <div class="action-buttons">
       <button class="btn" onclick="startFinancialTracking()">Start Tracking</button>
-      <button class="btn btn-secondary" onclick="signOut()">Sign Out</button>
+      <button class="btn btn-secondary" onclick="handleSignOut()">Sign Out</button>
     </div>
     
     <div class="features-preview">
@@ -78,7 +78,7 @@
           // Get user information from token claims
           const firstName = account.idTokenClaims.given_name || 'User';
           const lastName = account.idTokenClaims.family_name || '';
-          const email = account.idTokenClaims.email || 'No email available';
+          const email = account.idTokenClaims.emails[0] || 'No email available';
           const userId = account.idTokenClaims.sub;
           
           // Update the UI with user information
@@ -122,10 +122,12 @@
       alert('Financial tracking features coming soon! This will be where you can add bank accounts and track your finances.');
     }
 
-    function signOut() {
+    function handleSignOut() {
       // Call the signOut function from auth.js
-      if (typeof signOut === 'function') {
-        signOut();
+      if (window.msalInstance) {
+        window.msalInstance.logout();
+        localStorage.clear();
+        window.location.replace('/index.html');
       } else {
         // Fallback if signOut is not available
         localStorage.clear();
