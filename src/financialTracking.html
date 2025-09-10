@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Financial Tracking - Panduhz</title>
+  <link rel="stylesheet" href="financialTracking.css">
+        <script>
+  window.REACT_APP_API_URL = 'http://localhost:7071/api';
+  window.REACT_APP_ENVIRONMENT = 'development';
+  window.REACT_APP_DEBUG = true;
+</script>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1 class="title">Financial Tracking</h1>
+      <div class="user-info">
+        <span id="userName">Welcome, User!</span>
+        <button class="btn btn-secondary" onclick="handleSignOut()">Sign Out</button>
+      </div>
+    </header>
+
+    <div class="dashboard">
+      <div class="summary-cards">
+        <div class="card">
+          <h3>Total Accounts</h3>
+          <p id="totalAccounts">0</p>
+        </div>
+        <div class="card">
+          <h3>Total Balance</h3>
+          <p id="totalBalance">$0.00</p>
+        </div>
+        <div class="card">
+          <h3>This Month</h3>
+          <p id="monthlyTransactions">0 transactions</p>
+        </div>
+      </div>
+
+      <div class="action-section">
+        <h2>Quick Actions</h2>
+        <div class="action-buttons">
+          <button class="btn btn-primary" onclick="openCreateAccountModal()">
+            <span class="icon">🏦</span>
+            Create Bank Account
+          </button>
+          <button class="btn btn-primary" onclick="openAddTransactionModal()">
+            <span class="icon">💰</span>
+            Add Transaction
+          </button>
+          <button class="btn btn-secondary" onclick="viewAccounts()">
+            <span class="icon">📊</span>
+            View All Accounts
+          </button>
+        </div>
+      </div>
+
+      <div class="recent-activity">
+        <h2>Recent Activity</h2>
+        <div id="recentTransactions" class="activity-list">
+          <p class="no-data">No recent transactions found. Create an account and add some transactions to get started!</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Bank Account Modal -->
+  <div id="createAccountModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Create New Bank Account</h2>
+        <span class="close" onclick="closeCreateAccountModal()">&times;</span>
+      </div>
+      <form id="createAccountForm" class="modal-body">
+        <div class="form-group">
+          <label for="accountName">Account Name *</label>
+          <input type="text" id="accountName" name="accountName" placeholder="e.g., Chase Checking" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="accountType">Account Type *</label>
+          <select id="accountType" name="accountType" required>
+            <option value="">Select account type</option>
+            <option value="checking">Checking</option>
+            <option value="savings">Savings</option>
+            <option value="credit">Credit</option>
+            <option value="investment">Investment</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label for="bankName">Bank Name</label>
+          <input type="text" id="bankName" name="bankName" placeholder="e.g., Chase Bank">
+        </div>
+        
+        <div class="form-group">
+          <label for="initialBalance">Initial Balance</label>
+          <input type="number" id="initialBalance" name="initialBalance" step="0.01" value="0.00" placeholder="0.00">
+        </div>
+        
+        <div class="form-group">
+          <label for="accountDescription">Description (Optional)</label>
+          <textarea id="accountDescription" name="accountDescription" placeholder="Additional notes about this account"></textarea>
+        </div>
+        
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeCreateAccountModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create Account</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add Transaction Modal -->
+  <div id="addTransactionModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Add New Transaction</h2>
+        <span class="close" onclick="closeAddTransactionModal()">&times;</span>
+      </div>
+      <form id="addTransactionForm" class="modal-body">
+        <div class="form-group">
+          <label for="transactionAccount">Account *</label>
+          <select id="transactionAccount" name="transactionAccount" required>
+            <option value="">Select an account</option>
+            <!-- Accounts will be populated dynamically -->
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label for="transactionAmount">Amount *</label>
+          <input type="number" id="transactionAmount" name="transactionAmount" step="0.01" required placeholder="0.00">
+        </div>
+        
+        <div class="form-group">
+          <label for="transactionDescription">Description *</label>
+          <input type="text" id="transactionDescription" name="transactionDescription" required placeholder="e.g., Grocery shopping">
+        </div>
+        
+        <div class="form-group">
+          <label for="transactionCategory">Category *</label>
+          <select id="transactionCategory" name="transactionCategory" required>
+            <option value="">Select category</option>
+            <option value="groceries">Groceries</option>
+            <option value="salary">Salary</option>
+            <option value="rent">Rent</option>
+            <option value="utilities">Utilities</option>
+            <option value="entertainment">Entertainment</option>
+            <option value="transportation">Transportation</option>
+            <option value="healthcare">Healthcare</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label for="transactionType">Transaction Type *</label>
+          <select id="transactionType" name="transactionType" required>
+            <option value="">Select type</option>
+            <option value="income">Income</option>
+            <option value="expense">Expense</option>
+            <option value="transfer">Transfer</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label for="transactionDate">Date</label>
+          <input type="date" id="transactionDate" name="transactionDate">
+        </div>
+        
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeAddTransactionModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add Transaction</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Loading overlay -->
+  <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+    <div class="loading-spinner"></div>
+    <p>Processing...</p>
+  </div>
+
+  <!-- Include the MSAL.js library -->
+  <script src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
+  <script src="auth.js"></script>
+  <script src="financialTracking.js"></script>
+</body>
+</html>

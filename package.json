@@ -1,0 +1,12 @@
+{
+  "name": "financial-tracker",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "node scripts/build-local.js && cd src && python -m http.server 3000",
+    "build": "node scripts/build-local.js",
+    "start": "cd src && python -m http.server 3000"
+  },
+  "devDependencies": {
+    "dotenv": "^16.0.0"
+  }
+}
