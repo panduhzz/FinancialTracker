@@ -2,53 +2,232 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Panduhz PW Tracker</title>
-          <script>
-  window.REACT_APP_API_URL = 'http://localhost:7071/api';
-  window.REACT_APP_ENVIRONMENT = 'development';
-  window.REACT_APP_DEBUG = true;
-</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panduhz Financial Tracker - Sign In</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .container {
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+      padding: 40px;
+      max-width: 400px;
+      width: 90%;
+      text-align: center;
+    }
+    
+    .logo {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      margin: 0 auto 20px;
+      background: #667eea;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 2em;
+      font-weight: bold;
+    }
+    
+    .welcome-title {
+      color: #333;
+      font-size: 2.2em;
+      margin: 0 0 10px 0;
+      font-weight: 300;
+    }
+    
+    .welcome-subtitle {
+      color: #666;
+      font-size: 1em;
+      margin: 0 0 30px 0;
+    }
+    
+    .welcome-message {
+      color: #666;
+      font-size: 1em;
+      margin: 20px 0;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 8px;
+    }
+    
+    .action-buttons {
+      margin-top: 30px;
+    }
+    
+    .btn {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 25px;
+      font-size: 1em;
+      cursor: pointer;
+      margin: 10px;
+      transition: all 0.3s ease;
+      text-decoration: none;
+      display: inline-block;
+      min-width: 120px;
+      font-weight: 500;
+    }
+    
+    .btn:hover {
+      background: #5a6fd8;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    .btn-secondary {
+      background: #6c757d;
+    }
+    
+    .btn-secondary:hover {
+      background: #5a6268;
+    }
+    
+    .btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    
+    .loading {
+      display: none;
+      color: #666;
+      font-style: italic;
+      margin-top: 15px;
+    }
+    
+    .loading.show {
+      display: block;
+    }
+    
+    @media (max-width: 480px) {
+      .container {
+        padding: 30px 20px;
+      }
+      
+      .welcome-title {
+        font-size: 1.8em;
+      }
+      
+      .btn {
+        display: block;
+        width: 100%;
+        margin: 10px 0;
+      }
+    }
+  </style>
+  <script>
+    window.REACT_APP_API_URL = 'http://localhost:7071/api';
+    window.REACT_APP_ENVIRONMENT = 'development';
+    window.REACT_APP_DEBUG = true;
+  </script>
 </head>
 <body>
-  <h1>Welcome to My App</h1>
-  
-  <p id="welcomeMessage">Please sign in to continue.</p>
-
-  <!-- Buttons for sign-in and sign-out -->
-  <button id="signInButton" onclick="signIn()">Sign In</button>
-  <button id="signOutButton" onclick="signOut()">Sign Out</button>
+  <div class="container">
+    <div class="logo">💰</div>
+    
+    <h1 class="welcome-title">Panduhz Financial Tracker</h1>
+    <p class="welcome-subtitle">Your personal finance management hub</p>
+    
+    <div id="welcomeMessage" class="welcome-message">
+      Please sign in to access your financial dashboard.
+    </div>
+    
+    <div class="action-buttons">
+      <button id="signInButton" class="btn" onclick="signIn()">Sign In</button>
+      <button id="signOutButton" class="btn btn-secondary" onclick="signOut()" style="display: none;">Sign Out</button>
+    </div>
+    
+    <div id="loading" class="loading">Signing in...</div>
+  </div>
 
   <!-- Include the MSAL.js library -->
   <script src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
   <!-- Include your external JavaScript file -->
   <script src="auth.js"></script>
-<!--
+  
   <script>
     // Simple UI logic to show/hide buttons based on authentication status
     const signInButton = document.getElementById('signInButton');
     const signOutButton = document.getElementById('signOutButton');
     const welcomeMessage = document.getElementById('welcomeMessage');
+    const loading = document.getElementById('loading');
 
-    function newPageAfterLogin(familyName, givenName) {
-      welcomeMessage.textContent = `Welcome, ${givenName} ${familyName}!`;
+    function showLoading() {
+      loading.classList.add('show');
+      signInButton.disabled = true;
+    }
+
+    function hideLoading() {
+      loading.classList.remove('show');
+      signInButton.disabled = false;
+    }
+
+    function updateUIAfterLogin(familyName, givenName) {
+      welcomeMessage.textContent = `Welcome back, ${givenName} ${familyName}! Redirecting to your dashboard...`;
       signInButton.style.display = 'none';
-      signOutButton.style.display = 'block';
+      signOutButton.style.display = 'inline-block';
+      hideLoading();
+      
+      // Redirect to logged in page after a short delay
+      setTimeout(() => {
+        window.location.replace('/loggedIn.html');
+      }, 1500);
     }
 
     function updateUIAfterLogout() {
-      welcomeMessage.textContent = 'Please sign in to continue.';
-      signInButton.style.display = 'block';
+      welcomeMessage.textContent = 'Please sign in to access your financial dashboard.';
+      signInButton.style.display = 'inline-block';
       signOutButton.style.display = 'none';
+      hideLoading();
     }
 
+    // Override the signIn function to show loading
+    const originalSignIn = window.signIn;
+    window.signIn = function() {
+      showLoading();
+      if (originalSignIn) {
+        originalSignIn();
+      }
+    };
+
     // Check if user is already logged in when the page loads
-    const currentAccounts = msalInstance.getAllAccounts();
-    if (currentAccounts && currentAccounts.length > 0) {
-      updateUIAfterLogin(currentAccounts[0]);
-    } else {
-      updateUIAfterLogout();
-    }
+    window.addEventListener('load', function() {
+      setTimeout(() => {
+        if (window.msalInstance) {
+          const currentAccounts = window.msalInstance.getAllAccounts();
+          if (currentAccounts && currentAccounts.length > 0) {
+            const account = currentAccounts[0];
+            if (account.idTokenClaims) {
+              const givenName = account.idTokenClaims.given_name || 'User';
+              const familyName = account.idTokenClaims.family_name || '';
+              updateUIAfterLogin(givenName, familyName);
+            } else {
+              // If no token claims, redirect anyway since user is logged in
+              updateUIAfterLogin('User', '');
+            }
+          } else {
+            updateUIAfterLogout();
+          }
+        } else {
+          updateUIAfterLogout();
+        }
+      }, 100);
+    });
   </script>
--->
 </body>
 </html>

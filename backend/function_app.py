@@ -226,7 +226,7 @@ def add_transaction(account_id: str, user_id: str, amount: float, description: s
             'PartitionKey': user_id,
             'RowKey': transaction_id,
             'account_id': account_id,
-            'amount': amount,
+            'amount': amount,  # Store as positive amount
             'description': description,
             'category': category,
             'transaction_type': transaction_type,
@@ -239,8 +239,8 @@ def add_transaction(account_id: str, user_id: str, amount: float, description: s
         table_client = get_table_client("Transactions")
         table_client.create_entity(transaction_entity)
         
-        # Update account balance
-        update_account_balance(account_id, user_id, amount)
+        # Update account balance (pass transaction type)
+        update_account_balance(account_id, user_id, amount, transaction_type)
         
         logging.info(f"Created transaction {transaction_id} for account {account_id}")
         return transaction_entity
@@ -249,22 +249,33 @@ def add_transaction(account_id: str, user_id: str, amount: float, description: s
         logging.error(f"Error adding transaction: {str(e)}")
         raise e
 
-def update_account_balance(account_id: str, user_id: str, amount_change: float):
-    """Update an account's current balance"""
+def update_account_balance(account_id: str, user_id: str, amount_change: float, transaction_type: str):
+    """Update an account's current balance based on transaction type"""
     try:
         table_client = get_table_client("UserAccounts")
         
         # Get current account
         entity = table_client.get_entity(partition_key=user_id, row_key=account_id)
         current_balance = entity.get('current_balance', 0)
-        new_balance = current_balance + amount_change
+        
+        # Calculate balance change based on transaction type
+        if transaction_type == 'income':
+            new_balance = current_balance + amount_change
+        elif transaction_type == 'expense':
+            new_balance = current_balance - amount_change
+        elif transaction_type == 'transfer':
+            # For transfers, we might want to handle differently
+            # For now, treat as expense (money leaving the account)
+            new_balance = current_balance - amount_change
+        else:
+            raise ValueError(f"Invalid transaction type: {transaction_type}")
         
         # Update balance
         entity['current_balance'] = new_balance
         entity['last_updated'] = datetime.utcnow().isoformat()
         
         table_client.update_entity(entity)
-        logging.info(f"Updated account {account_id} balance to {new_balance}")
+        logging.info(f"Updated account {account_id} balance to {new_balance} (transaction type: {transaction_type})")
         
     except Exception as e:
         logging.error(f"Error updating account balance: {str(e)}")

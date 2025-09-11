@@ -217,8 +217,21 @@ function displayRecentTransactions() {
   
   container.innerHTML = recentTransactions.slice(0, 5).map(transaction => {
     const amount = parseFloat(transaction.amount);
-    const amountClass = amount >= 0 ? 'income' : 'expense';
-    const amountDisplay = amount >= 0 ? `+$${amount.toFixed(2)}` : `-$${Math.abs(amount).toFixed(2)}`;
+    const transactionType = transaction.transaction_type;
+    
+    // Determine display based on transaction type
+    let amountClass, amountDisplay;
+    if (transactionType === 'income') {
+      amountClass = 'income';
+      amountDisplay = `+$${amount.toFixed(2)}`;
+    } else if (transactionType === 'expense') {
+      amountClass = 'expense';
+      amountDisplay = `-$${amount.toFixed(2)}`;
+    } else {
+      // For transfers, you might want different logic
+      amountClass = 'expense';
+      amountDisplay = `-$${amount.toFixed(2)}`;
+    }
     
     return `
       <div class="transaction-item">
@@ -333,10 +346,14 @@ document.getElementById('addTransactionForm').addEventListener('submit', async f
       const newTransaction = await response.json();
       recentTransactions.unshift(newTransaction);
       
-      // Update account balance
+      // Update account balance based on transaction type
       const account = userAccounts.find(acc => acc.account_id === transactionData.account_id);
       if (account) {
-        account.current_balance += transactionData.amount;
+        if (transactionData.transaction_type === 'income') {
+          account.current_balance += transactionData.amount;
+        } else if (transactionData.transaction_type === 'expense') {
+          account.current_balance -= transactionData.amount;
+        }
       }
       
       showMessage('Transaction added successfully!', 'success');
