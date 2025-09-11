@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>All Accounts - Panduhz Financial Tracker</title>
+  <link rel="stylesheet" href="accounts.css">
+                <script>
+  window.REACT_APP_API_URL = 'http://localhost:7071/api';
+  window.REACT_APP_ENVIRONMENT = 'development';
+  window.REACT_APP_DEBUG = true;
+</script>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1 class="title">All Accounts</h1>
+      <div class="user-info">
+        <span id="userName">Welcome, User!</span>
+        <button class="btn btn-secondary" onclick="handleSignOut()">Sign Out</button>
+      </div>
+    </header>
+
+    <!-- Financial Summary Cards -->
+    <div class="summary-cards">
+      <div class="card">
+        <h3>Total Accounts</h3>
+        <p id="totalAccounts">0</p>
+      </div>
+      <div class="card">
+        <h3>Total Balance</h3>
+        <p id="totalBalance">$0.00</p>
+      </div>
+      <div class="card">
+        <h3>Monthly Income</h3>
+        <p id="monthlyIncome">$0.00</p>
+      </div>
+      <div class="card">
+        <h3>Monthly Expenses</h3>
+        <p id="monthlyExpenses">$0.00</p>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="navigation">
+      <button class="btn btn-secondary" onclick="goBack()">
+        <span class="icon">←</span>
+        Back to Dashboard
+      </button>
+    </div>
+
+    <!-- Accounts List -->
+    <div class="accounts-section">
+      <h2>Your Accounts</h2>
+      <div id="accountsList" class="accounts-list">
+        <div class="no-data">
+          <p>No accounts found. Create your first account to get started!</p>
+          <button class="btn btn-primary" onclick="goToCreateAccount()">Create Account</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Account Summary Modal -->
+  <div id="accountSummaryModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modalAccountName">Account Summary</h2>
+        <span class="close" onclick="closeAccountSummaryModal()">&times;</span>
+      </div>
+      <div class="modal-body">
+        <div id="accountSummaryContent">
+          <!-- Account summary content will be loaded here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading overlay -->
+  <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+    <div class="loading-spinner"></div>
+    <p>Loading...</p>
+  </div>
+
+  <!-- Include the MSAL.js library -->
+  <script src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
+  <script src="auth.js"></script>
+  <script src="accounts.js"></script>
+</body>
+</html>

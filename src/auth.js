@@ -59,6 +59,9 @@ function signIn() {
       // Store user information in local storage
       localStorage.setItem('familyName', familyName);
       localStorage.setItem('givenName', givenName);
+      
+      // Redirect immediately to loggedIn.html
+      window.location.replace("/loggedIn.html");
     })
     .catch(error => {
       // Handle login error
@@ -68,15 +71,9 @@ function signIn() {
 
 // Function to update the UI after login
 function updateUIAfterLogin(familyName, givenName) {
-  window.location.replace("/loggedIn.html") //need to change the location of this, once this runs everything else after does not run.
-  console.log('In updateUIAfterLogin')
-  checkToken()
-  //console.log(accountSession);
-  const welcomeMessage = document.getElementById('signedInMessage');
-  if (welcomeMessage) {
-    welcomeMessage.textContent = `Welcome, ${givenName} ${familyName}!`;
-  }
-  // Show authenticated content, hide sign-in button, etc.
+  // This function is no longer used since we redirect immediately in signIn()
+  // But keeping it for compatibility
+  window.location.replace("/loggedIn.html");
 }
 
 function checkToken(){

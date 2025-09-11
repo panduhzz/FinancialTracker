@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <title>Welcome to Panduhz Financial Tracker</title>
   <link rel="stylesheet" href="loggedIn.css">
+                        <script>
+  window.REACT_APP_API_URL = 'http://localhost:7071/api';
+  window.REACT_APP_ENVIRONMENT = 'development';
+  window.REACT_APP_DEBUG = true;
+</script>
 </head>
 <body>
   <div class="container">
@@ -118,8 +123,8 @@
     }
 
     function startFinancialTracking() {
-      // Placeholder for future functionality
-      alert('Financial tracking features coming soon! This will be where you can add bank accounts and track your finances.');
+      // Redirect to the financial tracking page
+      window.location.href = '/financialTracking.html';
     }
 
     function handleSignOut() {
