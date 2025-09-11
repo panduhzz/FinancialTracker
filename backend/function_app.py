@@ -170,6 +170,7 @@ def create_bank_account(user_id: str, account_name: str, account_type: str,
         account_entity = {
             'PartitionKey': user_id,
             'RowKey': account_id,
+            'account_id': account_id,
             'account_name': account_name,
             'account_type': account_type,
             'current_balance': initial_balance,
@@ -196,7 +197,12 @@ def get_user_accounts(user_id: str) -> List[Dict]:
     try:
         table_client = get_table_client("UserAccounts")
         entities = table_client.list_entities(filter=f"PartitionKey eq '{user_id}' and is_active eq true")
-        return [dict(entity) for entity in entities]
+        accounts = []
+        for entity in entities:
+            account = dict(entity)
+            account['account_id'] = account['RowKey']
+            accounts.append(account)
+        return accounts
     except Exception as e:
         logging.error(f"Error getting user accounts: {str(e)}")
         raise e
@@ -432,18 +438,22 @@ def transactions_api(req: func.HttpRequest) -> func.HttpResponse:
                 
             except Exception as e:
                 logging.error(f"Error adding transaction: {str(e)}")
+                headers = get_cors_headers()
+                headers["Content-Type"] = "application/json"
                 return func.HttpResponse(
                     json.dumps({"error": "Failed to add transaction", "details": str(e)}),
                     status_code=500,
-                    headers={"Content-Type": "application/json"}
+                    headers=headers
                 )
     
     except Exception as e:
         logging.error(f"Error in transactions API: {str(e)}")
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
         return func.HttpResponse(
             json.dumps({"error": "Internal server error", "details": str(e)}),
             status_code=500,
-            headers={"Content-Type": "application/json"}
+            headers=headers
         )
 
 @app.route(route="transactions/recent", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
