@@ -114,6 +114,11 @@
       display: block;
     }
     
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
     @media (max-width: 480px) {
       .container {
         padding: 30px 20px;
@@ -130,29 +135,40 @@
       }
     }
   </style>
-  <script>
-    window.REACT_APP_API_URL = 'http://localhost:7071/api';
-    window.REACT_APP_ENVIRONMENT = 'development';
-    window.REACT_APP_DEBUG = true;
-  </script>
+                <script>
+  window.REACT_APP_API_URL = 'http://localhost:7071/api';
+  window.REACT_APP_ENVIRONMENT = 'development';
+  window.REACT_APP_DEBUG = true;
+</script>
 </head>
 <body>
   <div class="container">
-    <div class="logo">💰</div>
-    
-    <h1 class="welcome-title">Panduhz Financial Tracker</h1>
-    <p class="welcome-subtitle">Your personal finance management hub</p>
-    
-    <div id="welcomeMessage" class="welcome-message">
-      Please sign in to access your financial dashboard.
+    <!-- Loading state while checking authentication -->
+    <div id="loadingState" style="text-align: center; padding: 50px;">
+      <div class="logo">💰</div>
+      <h1 class="welcome-title">Panduhz Financial Tracker</h1>
+      <div style="font-size: 18px; color: #666; margin: 20px 0;">Checking authentication...</div>
+      <div style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #667eea; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto;"></div>
     </div>
     
-    <div class="action-buttons">
-      <button id="signInButton" class="btn" onclick="signIn()">Sign In</button>
-      <button id="signOutButton" class="btn btn-secondary" onclick="signOut()" style="display: none;">Sign Out</button>
+    <!-- Main content (hidden initially) -->
+    <div id="mainContent" style="display: none;">
+      <div class="logo">💰</div>
+      
+      <h1 class="welcome-title">Panduhz Financial Tracker</h1>
+      <p class="welcome-subtitle">Your personal finance management hub</p>
+      
+      <div id="welcomeMessage" class="welcome-message">
+        Please sign in to access your financial dashboard.
+      </div>
+      
+      <div class="action-buttons">
+        <button id="signInButton" class="btn" onclick="signIn()">Sign In</button>
+        <button id="signOutButton" class="btn btn-secondary" onclick="signOut()" style="display: none;">Sign Out</button>
+      </div>
+      
+      <div id="loading" class="loading">Signing in...</div>
     </div>
-    
-    <div id="loading" class="loading">Signing in...</div>
   </div>
 
   <!-- Include the MSAL.js library -->
@@ -178,17 +194,17 @@
     }
 
     function updateUIAfterLogin(familyName, givenName) {
-      welcomeMessage.textContent = `Welcome back, ${givenName} ${familyName}! Redirecting to your dashboard...`;
-      signInButton.style.display = 'none';
-      signOutButton.style.display = 'inline-block';
-      hideLoading();
-      
-      // Redirect to logged in page after a short delay
-      setTimeout(() => {
-        window.location.replace('/loggedIn.html');
-      }, 1500);
+      // This function is no longer used since we redirect immediately in auth.js
+      // But keeping it for compatibility
+      window.location.replace('/loggedIn.html');
     }
 
+    function showLoginForm() {
+      // Hide loading state and show main content
+      document.getElementById('loadingState').style.display = 'none';
+      document.getElementById('mainContent').style.display = 'block';
+    }
+    
     function updateUIAfterLogout() {
       welcomeMessage.textContent = 'Please sign in to access your financial dashboard.';
       signInButton.style.display = 'inline-block';
@@ -207,26 +223,24 @@
 
     // Check if user is already logged in when the page loads
     window.addEventListener('load', function() {
-      setTimeout(() => {
+      setTimeout(async () => {
         if (window.msalInstance) {
+          // Wait for MSAL to be fully initialized
+          await window.msalInstance.initialize();
+          
+          // Wait a bit for accounts to be fully loaded
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
           const currentAccounts = window.msalInstance.getAllAccounts();
           if (currentAccounts && currentAccounts.length > 0) {
-            const account = currentAccounts[0];
-            if (account.idTokenClaims) {
-              const givenName = account.idTokenClaims.given_name || 'User';
-              const familyName = account.idTokenClaims.family_name || '';
-              updateUIAfterLogin(givenName, familyName);
-            } else {
-              // If no token claims, redirect anyway since user is logged in
-              updateUIAfterLogin('User', '');
-            }
-          } else {
-            updateUIAfterLogout();
+            // User is already logged in, redirect immediately to loggedIn.html
+            window.location.replace("/loggedIn.html");
+            return;
           }
-        } else {
-          updateUIAfterLogout();
         }
-      }, 100);
+        // If we reach here, user is not logged in, show the login form
+        showLoginForm();
+      }, 200); // Increased timeout to give more time for initialization
     });
   </script>
 </body>

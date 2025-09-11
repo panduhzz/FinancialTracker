@@ -9,6 +9,46 @@ from typing import Dict, List, Optional, Tuple
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
+@app.route(route="test-account-summary", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def test_account_summary_api(req: func.HttpRequest) -> func.HttpResponse:
+    """Test endpoint for account summary debugging"""
+    try:
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        # Get user ID from request headers
+        user_id = req.headers.get('X-User-ID', 'dev-user-123')
+        
+        # Get all accounts for the user
+        accounts = get_user_accounts(user_id)
+        
+        result = {
+            "user_id": user_id,
+            "total_accounts": len(accounts),
+            "accounts": accounts
+        }
+        
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
+        return func.HttpResponse(
+            json.dumps(result),
+            status_code=200,
+            headers=headers
+        )
+    
+    except Exception as e:
+        logging.error(f"Error in test account summary API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error", "details": str(e)}),
+            status_code=500,
+            headers={"Content-Type": "application/json"}
+        )
+
 @app.route(route="hello")
 def dbupdater(req: func.HttpRequest) -> func.HttpResponse:
     try:
@@ -296,6 +336,153 @@ def get_user_transactions(user_id: str, limit: int = 100) -> List[Dict]:
         logging.error(f"Error getting user transactions: {str(e)}")
         raise e
 
+def get_account_details(account_id: str, user_id: str) -> Optional[Dict]:
+    """Get detailed information for a specific account"""
+    try:
+        table_client = get_table_client("UserAccounts")
+        entity = table_client.get_entity(partition_key=user_id, row_key=account_id)
+        
+        if entity:
+            account = dict(entity)
+            account['account_id'] = account['RowKey']
+            return account
+        return None
+    except Exception as e:
+        logging.error(f"Error getting account details: {str(e)}")
+        return None
+
+def get_account_summary(account_id: str, user_id: str) -> Dict:
+    """Get summary information for an account"""
+    try:
+        logging.info(f"Getting account summary for account_id: {account_id}, user_id: {user_id}")
+        
+        # Get account details
+        account = get_account_details(account_id, user_id)
+        if not account:
+            logging.warning(f"Account not found: {account_id} for user: {user_id}")
+            return {"error": "Account not found"}
+        
+        logging.info(f"Account found: {account.get('account_name', 'Unknown')}")
+        
+        # Get transactions for this account
+        table_client = get_table_client("Transactions")
+        
+        # Get transactions for this account
+        filter_query = f"PartitionKey eq '{user_id}' and account_id eq '{account_id}'"
+        
+        try:
+            entities = table_client.list_entities(filter=filter_query)
+            transactions = [dict(entity) for entity in entities]
+        except Exception as e:
+            logging.error(f"Error with filter query: {e}")
+            # Fallback: get all transactions for user and filter manually
+            entities = table_client.list_entities(filter=f"PartitionKey eq '{user_id}'")
+            all_transactions = [dict(entity) for entity in entities]
+            transactions = [t for t in all_transactions if t.get('account_id') == account_id]
+        
+        # Additional validation: filter out any transactions that don't match the account_id
+        # This is a safety check in case the Azure Table Storage filter doesn't work as expected
+        filtered_transactions = []
+        for transaction in transactions:
+            if transaction.get('account_id') == account_id:
+                filtered_transactions.append(transaction)
+        
+        transactions = filtered_transactions
+        
+        # Calculate summary statistics
+        total_transactions = len(transactions)
+        last_transaction_date = None
+        
+        if transactions:
+            # Sort by date to get the most recent
+            transactions.sort(key=lambda x: x.get('transaction_date', ''), reverse=True)
+            last_transaction_date = transactions[0].get('transaction_date')
+        
+        # Calculate monthly totals (current month)
+        current_month = datetime.utcnow().strftime('%Y-%m')
+        monthly_income = 0
+        monthly_expense = 0
+        
+        for transaction in transactions:
+            transaction_date = transaction.get('transaction_date', '')
+            if transaction_date.startswith(current_month):
+                amount = float(transaction.get('amount', 0))
+                transaction_type = transaction.get('transaction_type', '')
+                
+                if transaction_type == 'income':
+                    monthly_income += amount
+                elif transaction_type == 'expense':
+                    monthly_expense += amount
+        
+        result = {
+            "account_id": account_id,
+            "account_name": account.get('account_name', ''),
+            "current_balance": account.get('current_balance', 0),
+            "total_transactions": total_transactions,
+            "last_transaction_date": last_transaction_date,
+            "monthly_income": monthly_income,
+            "monthly_expense": monthly_expense,
+            "recent_transactions": transactions[:5]  # Last 5 transactions
+        }
+        
+        return result
+        
+    except Exception as e:
+        logging.error(f"Error getting account summary: {str(e)}")
+        return {"error": str(e)}
+
+def get_user_financial_summary(user_id: str) -> Dict:
+    """Get overall financial summary for a user"""
+    try:
+        # Get all user accounts
+        accounts = get_user_accounts(user_id)
+        
+        # Get all user transactions
+        transactions = get_user_transactions(user_id, limit=1000)  # Get more for accurate calculations
+        
+        # Calculate totals
+        total_accounts = len(accounts)
+        total_balance = sum(account.get('current_balance', 0) for account in accounts)
+        
+        # Calculate monthly totals (current month)
+        current_month = datetime.utcnow().strftime('%Y-%m')
+        monthly_income = 0
+        monthly_expense = 0
+        
+        for transaction in transactions:
+            transaction_date = transaction.get('transaction_date', '')
+            if transaction_date.startswith(current_month):
+                amount = float(transaction.get('amount', 0))
+                transaction_type = transaction.get('transaction_type', '')
+                
+                if transaction_type == 'income':
+                    monthly_income += amount
+                elif transaction_type == 'expense':
+                    monthly_expense += amount
+        
+        # Prepare account balances summary
+        account_balances = []
+        for account in accounts:
+            account_balances.append({
+                "account_id": account.get('account_id'),
+                "account_name": account.get('account_name', ''),
+                "account_type": account.get('account_type', ''),
+                "current_balance": account.get('current_balance', 0)
+            })
+        
+        return {
+            "total_accounts": total_accounts,
+            "total_balance": total_balance,
+            "monthly_income": monthly_income,
+            "monthly_expense": monthly_expense,
+            "net_worth": total_balance,
+            "account_balances": account_balances
+        }
+        
+    except Exception as e:
+        logging.error(f"Error getting user financial summary: {str(e)}")
+        return {"error": str(e)}
+
 # API Endpoints
 @app.route(route="accounts", methods=["GET", "POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 def accounts_api(req: func.HttpRequest) -> func.HttpResponse:
@@ -502,6 +689,99 @@ def recent_transactions_api(req: func.HttpRequest) -> func.HttpResponse:
     
     except Exception as e:
         logging.error(f"Error in recent transactions API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error", "details": str(e)}),
+            status_code=500,
+            headers={"Content-Type": "application/json"}
+        )
+
+@app.route(route="accounts/summary/{account_id}", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def account_summary_api(req: func.HttpRequest) -> func.HttpResponse:
+    """API endpoint for getting account summary"""
+    try:
+        logging.info(f"Account summary API called with method: {req.method}")
+        
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            logging.info("Handling CORS preflight request")
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        # Get user ID from request headers
+        user_id = req.headers.get('X-User-ID')
+        if not user_id:
+            # For development, use a default user ID
+            user_id = "dev-user-123"
+            logging.warning("No user ID provided, using default for development")
+        
+        logging.info(f"Using user ID: {user_id}")
+        
+        # Get account ID from route parameter
+        account_id = req.route_params.get('account_id')
+        if not account_id:
+            logging.error("No account ID provided in route parameters")
+            return func.HttpResponse(
+                json.dumps({"error": "Account ID is required"}),
+                status_code=400,
+                headers={"Content-Type": "application/json"}
+            )
+        
+        logging.info(f"Getting summary for account ID: {account_id}")
+        
+        # Get account summary
+        summary = get_account_summary(account_id, user_id)
+        
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
+        return func.HttpResponse(
+            json.dumps(summary),
+            status_code=200,
+            headers=headers
+        )
+    
+    except Exception as e:
+        logging.error(f"Error in account summary API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error", "details": str(e)}),
+            status_code=500,
+            headers={"Content-Type": "application/json"}
+        )
+
+@app.route(route="financial-summary", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def financial_summary_api(req: func.HttpRequest) -> func.HttpResponse:
+    """API endpoint for getting user financial summary"""
+    try:
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        # Get user ID from request headers
+        user_id = req.headers.get('X-User-ID')
+        if not user_id:
+            # For development, use a default user ID
+            user_id = "dev-user-123"
+            logging.warning("No user ID provided, using default for development")
+        
+        # Get financial summary
+        summary = get_user_financial_summary(user_id)
+        
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
+        return func.HttpResponse(
+            json.dumps(summary),
+            status_code=200,
+            headers=headers
+        )
+    
+    except Exception as e:
+        logging.error(f"Error in financial summary API: {str(e)}")
         return func.HttpResponse(
             json.dumps({"error": "Internal server error", "details": str(e)}),
             status_code=500,

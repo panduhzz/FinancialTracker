@@ -401,8 +401,8 @@ function showMessage(message, type) {
   }, 5000);
 }
 
-function viewAccounts() {
-  showMessage('Account management view coming soon!', 'success');
+function viewAllAccounts() {
+  window.location.href = '/accounts.html';
 }
 
 function handleSignOut() {

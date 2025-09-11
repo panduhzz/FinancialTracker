@@ -15,7 +15,8 @@ function injectEnvironmentVariables() {
   const htmlFiles = [
     'src/index.html',
     'src/loggedIn.html',
-    'src/financialTracking.html'
+    'src/financialTracking.html',
+    'src/accounts.html'
   ];
 
   htmlFiles.forEach(file => {
