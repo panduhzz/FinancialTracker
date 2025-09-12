@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <title>Welcome to Panduhz Financial Tracker</title>
   <link rel="stylesheet" href="loggedIn.css">
-                              <script>
+                                              <script>
   window.REACT_APP_API_URL = 'http://localhost:7071/api';
   window.REACT_APP_ENVIRONMENT = 'development';
   window.REACT_APP_DEBUG = true;
@@ -28,8 +28,9 @@
       <button class="btn btn-secondary" onclick="handleSignOut()">Sign Out</button>
     </div>
     
+    
     <div class="features-preview">
-      <h3 style="text-align: center; color: #333; margin-bottom: 20px;">Coming Soon</h3>
+      <h3 style="text-align: center; color: #333; margin-bottom: 20px;">Available Features</h3>
       <div class="feature-item">
         <div class="feature-icon">��</div>
         <div class="feature-text">Manage multiple bank accounts</div>
@@ -51,8 +52,8 @@
 
   <!-- Include the MSAL.js library -->
   <script src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
-
-  <!-- Include your external JavaScript file -->
+  
+  <!-- Include your external JavaScript files -->
   <script src="auth.js"></script>
 
   <script>
@@ -95,6 +96,11 @@
           console.log('Last Name:', lastName);
           console.log('Email:', email);
           console.log('User ID:', userId);
+          
+          // Load the financial overview chart
+          setTimeout(() => {
+            loadFinancialOverviewChart();
+          }, 1000);
         }
       } else {
         // If no account found, redirect to login

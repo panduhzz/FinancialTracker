@@ -524,6 +524,311 @@ def get_user_financial_summary(user_id: str) -> Dict:
         logging.error(f"Error getting user financial summary: {str(e)}")
         return {"error": str(e)}
 
+# Analytics Functions for Charts
+def calculate_monthly_aggregates(transactions: List[Dict], months: int = 12) -> Dict:
+    """Helper function to aggregate transaction data by month"""
+    try:
+        from datetime import timedelta
+        
+        monthly_data = {}
+        current_date = datetime.utcnow()
+        
+        # Initialize last N months with zero values
+        for i in range(months):
+            month_date = current_date - timedelta(days=30*i)
+            month_key = month_date.strftime('%Y-%m')
+            monthly_data[month_key] = {
+                'income': 0,
+                'expense': 0,
+                'transfer': 0,
+                'net': 0,
+                'transaction_count': 0
+            }
+        
+        # Aggregate actual transaction data
+        for transaction in transactions:
+            transaction_date = transaction.get('transaction_date', '')
+            if transaction_date:
+                # Extract YYYY-MM from ISO date
+                month_key = transaction_date[:7]
+                if month_key in monthly_data:
+                    amount = float(transaction.get('amount', 0))
+                    transaction_type = transaction.get('transaction_type', '')
+                    
+                    monthly_data[month_key]['transaction_count'] += 1
+                    
+                    if transaction_type == 'income':
+                        monthly_data[month_key]['income'] += amount
+                    elif transaction_type == 'expense':
+                        monthly_data[month_key]['expense'] += amount
+                    elif transaction_type == 'transfer':
+                        monthly_data[month_key]['transfer'] += amount
+                    
+                    # Calculate net (income - expense)
+                    monthly_data[month_key]['net'] = (
+                        monthly_data[month_key]['income'] - 
+                        monthly_data[month_key]['expense']
+                    )
+        
+        # Sort by month (oldest first for charts)
+        sorted_months = sorted(monthly_data.keys())
+        sorted_data = {month: monthly_data[month] for month in sorted_months}
+        
+        return sorted_data
+        
+    except Exception as e:
+        logging.error(f"Error calculating monthly aggregates: {str(e)}")
+        return {}
+
+def get_monthly_financial_summary(user_id: str, months: int = 12) -> Dict:
+    """Get monthly aggregated financial data for all user accounts including balance history"""
+    try:
+        # Get all user transactions
+        transactions = get_user_transactions(user_id, limit=1000)
+        
+        # Get all user accounts for balance data
+        accounts = get_user_accounts(user_id)
+        
+        # Calculate monthly aggregates
+        monthly_data = calculate_monthly_aggregates(transactions, months)
+        
+        # Calculate historical balance data (with error handling)
+        try:
+            balance_history = get_balance_history(user_id, months)
+            
+            # Add balance data to monthly_data
+            for month_key, month_data in monthly_data.items():
+                if month_key in balance_history.get('monthly_net_worth', {}):
+                    month_data['total_balance'] = balance_history['monthly_net_worth'][month_key]
+                else:
+                    month_data['total_balance'] = 0
+        except Exception as e:
+            logging.error(f"Error calculating balance history: {str(e)}")
+            # If balance history fails, just use current total balance for all months
+            current_total_balance = sum(account.get('current_balance', 0) for account in accounts)
+            for month_key, month_data in monthly_data.items():
+                month_data['total_balance'] = current_total_balance
+        
+        # Calculate Y-axis scaling for both income/expense and balance data
+        all_values = []
+        balance_values = []
+        for month_data in monthly_data.values():
+            all_values.extend([month_data['income'], month_data['expense'], month_data['net']])
+            balance_values.append(month_data['total_balance'])
+        
+        # Calculate Y-axis scale for income/expense chart
+        if all_values:
+            min_val = min(all_values)
+            max_val = max(all_values)
+            range_val = max_val - min_val
+            
+            # Determine appropriate interval
+            if range_val <= 500:
+                interval = 50
+            elif range_val <= 1000:
+                interval = 100
+            elif range_val <= 5000:
+                interval = 500
+            else:
+                interval = 1000
+            
+            # Calculate axis bounds
+            axis_min = max(0, (min_val // interval) * interval - interval)
+            axis_max = ((max_val // interval) + 1) * interval + interval
+        else:
+            axis_min = 0
+            axis_max = 1000
+            interval = 100
+        
+        # Calculate Y-axis scale for balance chart
+        balance_axis_min = 0
+        balance_axis_max = 1000
+        balance_interval = 100
+        if balance_values:
+            balance_min = min(balance_values)
+            balance_max = max(balance_values)
+            balance_range = balance_max - balance_min
+            
+            # Determine appropriate interval for balance
+            if balance_range <= 500:
+                balance_interval = 50
+            elif balance_range <= 1000:
+                balance_interval = 100
+            elif balance_range <= 5000:
+                balance_interval = 500
+            else:
+                balance_interval = 1000
+            
+            # Calculate axis bounds for balance
+            balance_axis_min = max(0, (balance_min // balance_interval) * balance_interval - balance_interval)
+            balance_axis_max = ((balance_max // balance_interval) + 1) * balance_interval + balance_interval
+        
+        return {
+            "monthly_data": monthly_data,
+            "chart_config": {
+                "y_axis_scale": {
+                    "min": axis_min,
+                    "max": axis_max,
+                    "interval": interval
+                },
+                "balance_y_axis_scale": {
+                    "min": balance_axis_min,
+                    "max": balance_axis_max,
+                    "interval": balance_interval
+                }
+            },
+            "total_accounts": len(accounts),
+            "total_balance": sum(account.get('current_balance', 0) for account in accounts)
+        }
+        
+    except Exception as e:
+        logging.error(f"Error getting monthly financial summary: {str(e)}")
+        return {"error": str(e)}
+
+def get_account_monthly_history(account_id: str, user_id: str, months: int = 12) -> Dict:
+    """Get monthly data for a specific account"""
+    try:
+        # Get account details first
+        account = get_account_details(account_id, user_id)
+        if not account:
+            return {"error": "Account not found"}
+        
+        # Get all transactions for this account
+        table_client = get_table_client("Transactions")
+        filter_query = f"PartitionKey eq '{user_id}' and account_id eq '{account_id}'"
+        
+        try:
+            entities = table_client.list_entities(filter=filter_query)
+            transactions = [dict(entity) for entity in entities]
+        except Exception as e:
+            logging.error(f"Error with filter query: {e}")
+            # Fallback: get all transactions for user and filter manually
+            entities = table_client.list_entities(filter=f"PartitionKey eq '{user_id}'")
+            all_transactions = [dict(entity) for entity in entities]
+            transactions = [t for t in all_transactions if t.get('account_id') == account_id]
+        
+        # Calculate monthly aggregates for this account
+        monthly_data = calculate_monthly_aggregates(transactions, months)
+        
+        # Calculate Y-axis scaling for account balance
+        balance_values = [account.get('current_balance', 0)]
+        for month_data in monthly_data.values():
+            balance_values.extend([month_data['income'], month_data['expense']])
+        
+        if balance_values:
+            min_val = min(balance_values)
+            max_val = max(balance_values)
+            range_val = max_val - min_val
+            
+            if range_val <= 500:
+                interval = 50
+            elif range_val <= 1000:
+                interval = 100
+            elif range_val <= 5000:
+                interval = 500
+            else:
+                interval = 1000
+            
+            axis_min = max(0, (min_val // interval) * interval - interval)
+            axis_max = ((max_val // interval) + 1) * interval + interval
+        else:
+            axis_min = 0
+            axis_max = 1000
+            interval = 100
+        
+        return {
+            "account_info": {
+                "account_id": account_id,
+                "account_name": account.get('account_name', ''),
+                "current_balance": account.get('current_balance', 0)
+            },
+            "monthly_data": monthly_data,
+            "chart_config": {
+                "y_axis_scale": {
+                    "min": axis_min,
+                    "max": axis_max,
+                    "interval": interval
+                }
+            }
+        }
+        
+    except Exception as e:
+        logging.error(f"Error getting account monthly history: {str(e)}")
+        return {"error": str(e)}
+
+def get_balance_history(user_id: str, months: int = 12) -> Dict:
+    """Calculate historical balance snapshots for all accounts"""
+    try:
+        # Get all user accounts
+        accounts = get_user_accounts(user_id)
+        
+        # Get all user transactions
+        transactions = get_user_transactions(user_id, limit=1000)
+        
+        # Initialize monthly balance data
+        from datetime import timedelta
+        current_date = datetime.utcnow()
+        monthly_balances = {}
+        
+        for i in range(months):
+            month_date = current_date - timedelta(days=30*i)
+            month_key = month_date.strftime('%Y-%m')
+            monthly_balances[month_key] = {}
+            
+            # Initialize with current account balances (simplified approach)
+            for account in accounts:
+                account_id = account.get('account_id')
+                account_name = account.get('account_name', '')
+                monthly_balances[month_key][account_id] = {
+                    'account_name': account_name,
+                    'balance': account.get('current_balance', 0)
+                }
+        
+        # Calculate total net worth for each month
+        monthly_net_worth = {}
+        for month_key, account_balances in monthly_balances.items():
+            total_balance = sum(acc_data['balance'] for acc_data in account_balances.values())
+            monthly_net_worth[month_key] = total_balance
+        
+        # Calculate Y-axis scaling for net worth
+        net_worth_values = list(monthly_net_worth.values())
+        if net_worth_values:
+            min_val = min(net_worth_values)
+            max_val = max(net_worth_values)
+            range_val = max_val - min_val
+            
+            if range_val <= 1000:
+                interval = 100
+            elif range_val <= 5000:
+                interval = 500
+            elif range_val <= 10000:
+                interval = 1000
+            else:
+                interval = 2000
+            
+            axis_min = max(0, (min_val // interval) * interval - interval)
+            axis_max = ((max_val // interval) + 1) * interval + interval
+        else:
+            axis_min = 0
+            axis_max = 1000
+            interval = 100
+        
+        return {
+            "monthly_balances": monthly_balances,
+            "monthly_net_worth": monthly_net_worth,
+            "chart_config": {
+                "y_axis_scale": {
+                    "min": axis_min,
+                    "max": axis_max,
+                    "interval": interval
+                }
+            }
+        }
+        
+    except Exception as e:
+        logging.error(f"Error getting balance history: {str(e)}")
+        return {"error": str(e)}
+
 # API Endpoints
 @app.route(route="accounts", methods=["GET", "POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 def accounts_api(req: func.HttpRequest) -> func.HttpResponse:
@@ -880,6 +1185,139 @@ def financial_summary_api(req: func.HttpRequest) -> func.HttpResponse:
     
     except Exception as e:
         logging.error(f"Error in financial summary API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error", "details": str(e)}),
+            status_code=500,
+            headers={"Content-Type": "application/json"}
+        )
+
+# Analytics API Endpoints for Charts
+@app.route(route="analytics/monthly-summary", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def monthly_summary_api(req: func.HttpRequest) -> func.HttpResponse:
+    """API endpoint for getting monthly aggregated financial data for all accounts"""
+    try:
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        # Get user ID from request headers
+        user_id = req.headers.get('X-User-ID')
+        if not user_id:
+            # For development, use a default user ID
+            user_id = "dev-user-123"
+            logging.warning("No user ID provided, using default for development")
+        
+        # Get months parameter from query string (default: 12)
+        months = int(req.params.get('months', 12))
+        
+        # Get monthly financial summary
+        summary = get_monthly_financial_summary(user_id, months)
+        
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
+        return func.HttpResponse(
+            json.dumps(summary),
+            status_code=200,
+            headers=headers
+        )
+    
+    except Exception as e:
+        logging.error(f"Error in monthly summary API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error", "details": str(e)}),
+            status_code=500,
+            headers={"Content-Type": "application/json"}
+        )
+
+@app.route(route="analytics/account-history/{account_id}", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def account_history_api(req: func.HttpRequest) -> func.HttpResponse:
+    """API endpoint for getting monthly data for a specific account"""
+    try:
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        # Get user ID from request headers
+        user_id = req.headers.get('X-User-ID')
+        if not user_id:
+            # For development, use a default user ID
+            user_id = "dev-user-123"
+            logging.warning("No user ID provided, using default for development")
+        
+        # Get account ID from route parameter
+        account_id = req.route_params.get('account_id')
+        if not account_id:
+            return func.HttpResponse(
+                json.dumps({"error": "Account ID is required"}),
+                status_code=400,
+                headers={"Content-Type": "application/json"}
+            )
+        
+        # Get months parameter from query string (default: 12)
+        months = int(req.params.get('months', 12))
+        
+        # Get account monthly history
+        history = get_account_monthly_history(account_id, user_id, months)
+        
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
+        return func.HttpResponse(
+            json.dumps(history),
+            status_code=200,
+            headers=headers
+        )
+    
+    except Exception as e:
+        logging.error(f"Error in account history API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error", "details": str(e)}),
+            status_code=500,
+            headers={"Content-Type": "application/json"}
+        )
+
+@app.route(route="analytics/balance-history", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def balance_history_api(req: func.HttpRequest) -> func.HttpResponse:
+    """API endpoint for getting historical balance data for all accounts"""
+    try:
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        # Get user ID from request headers
+        user_id = req.headers.get('X-User-ID')
+        if not user_id:
+            # For development, use a default user ID
+            user_id = "dev-user-123"
+            logging.warning("No user ID provided, using default for development")
+        
+        # Get months parameter from query string (default: 12)
+        months = int(req.params.get('months', 12))
+        
+        # Get balance history
+        history = get_balance_history(user_id, months)
+        
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
+        return func.HttpResponse(
+            json.dumps(history),
+            status_code=200,
+            headers=headers
+        )
+    
+    except Exception as e:
+        logging.error(f"Error in balance history API: {str(e)}")
         return func.HttpResponse(
             json.dumps({"error": "Internal server error", "details": str(e)}),
             status_code=500,

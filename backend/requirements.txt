@@ -2,5 +2,6 @@
 # Ref: aka.ms/functions-azure-monitor-python
 # azure-monitor-opentelemetry
 
-azure-functions
-azure-data-tables
+azure-functions==1.18.0
+azure-data-tables==12.4.0
+six==1.16.0

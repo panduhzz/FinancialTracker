@@ -95,6 +95,8 @@ async function initializePage() {
         email: account.idTokenClaims.emails[0]
       };
       
+      // console.log('Current user initialized:', currentUser);
+      
       // Update UI with user info
       document.getElementById('userName').textContent = `Welcome, ${currentUser.name}!`;
       
@@ -102,7 +104,7 @@ async function initializePage() {
       await loadUserData();
       
       // Test account summary for debugging
-      await testAccountSummary();
+      // await testAccountSummary();
     } else {
       // Redirect to login if not authenticated
       window.location.replace('/index.html');
@@ -126,6 +128,11 @@ async function loadUserData() {
     // Update dashboard
     updateFinancialSummary();
     displayAccounts();
+    
+    // Load account charts in the background (optional)
+    // setTimeout(() => {
+    //   loadAllAccountCharts();
+    // }, 1000);
     
   } catch (error) {
     console.error('Error loading user data:', error);
@@ -198,6 +205,7 @@ function updateFinancialSummary() {
 
 function displayAccounts() {
   const container = document.getElementById('accountsList');
+  // console.log('Displaying accounts:', userAccounts);
   
   if (userAccounts.length === 0) {
     container.innerHTML = `
@@ -236,6 +244,7 @@ function displayAccounts() {
         <div id="summary-${account.account_id}" class="account-summary ${isExpanded ? 'show' : ''}">
           <div class="loading-placeholder">Loading summary...</div>
         </div>
+        
       </div>
     `;
   }).join('');
@@ -395,6 +404,7 @@ function updateAccountButton(accountId) {
 
 // Navigation Functions
 function goBack() {
+  // console.log('goBack() function called');
   window.location.href = '/financialTracking.html';
 }
 
@@ -530,3 +540,4 @@ async function deleteTransaction(transactionId, accountId) {
     showLoading(false);
   }
 }
+

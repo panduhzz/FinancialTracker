@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Financial Tracking - Panduhz</title>
   <link rel="stylesheet" href="financialTracking.css">
-                              <script>
+  <link rel="stylesheet" href="chart-styles.css">
+                                              <script>
   window.REACT_APP_API_URL = 'http://localhost:7071/api';
   window.REACT_APP_ENVIRONMENT = 'development';
   window.REACT_APP_DEBUG = true;
@@ -52,6 +53,17 @@
             <span class="icon">📊</span>
             View All Accounts
           </button>
+        </div>
+      </div>
+
+      <!-- Financial Overview Chart Section -->
+      <div class="chart-section">
+        <h3>Financial Overview</h3>
+        <div class="chart-container">
+          <canvas id="overviewChart"></canvas>
+        </div>
+        <div class="chart-controls">
+          <button onclick="loadFinancialOverviewChart()" class="active">Refresh Data</button>
         </div>
       </div>
 
@@ -183,7 +195,12 @@
 
   <!-- Include the MSAL.js library -->
   <script src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
+  
+  <!-- Include Chart.js library -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
   <script src="auth.js"></script>
+  <script src="charts.js"></script>
   <script src="financialTracking.js"></script>
 </body>
 </html>

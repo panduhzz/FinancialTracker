@@ -113,11 +113,19 @@ async function loadUserData() {
   try {
     showLoading(true);
     
-    // Load accounts and transactions
+    // Load accounts and transactions first
     await Promise.all([
       loadUserAccounts(),
       loadRecentTransactions()
     ]);
+    
+    // Load chart separately with error handling
+    try {
+      await loadFinancialOverviewChart();
+    } catch (error) {
+      console.error('Error loading chart:', error);
+      // Don't let chart errors break the page
+    }
     
     // Update dashboard
     updateDashboard();
@@ -144,7 +152,7 @@ async function loadUserAccounts() {
       userAccounts = await response.json();
       populateAccountSelect();
     } else {
-      console.log('No accounts found or error loading accounts');
+      console.log('No accounts found or error loading accounts. Status:', response.status);
       userAccounts = [];
     }
   } catch (error) {
@@ -181,7 +189,10 @@ function updateDashboard() {
   document.getElementById('totalAccounts').textContent = userAccounts.length;
   
   // Update total balance
-  const totalBalance = userAccounts.reduce((sum, account) => sum + (account.current_balance || 0), 0);
+  const totalBalance = userAccounts.reduce((sum, account) => {
+    const balance = account.current_balance || 0;
+    return sum + balance;
+  }, 0);
   document.getElementById('totalBalance').textContent = `$${totalBalance.toFixed(2)}`;
   
   // Update monthly transactions
