@@ -325,7 +325,12 @@ function displayAccountSummary(accountId, summary) {
               <div class="transaction-description">${transaction.description}</div>
               <div class="transaction-details">${transaction.category} • ${new Date(transaction.transaction_date).toLocaleDateString()}</div>
             </div>
-            <div class="transaction-amount ${amountClass}">${amountDisplay}</div>
+            <div class="transaction-actions">
+              <div class="transaction-amount ${amountClass}">${amountDisplay}</div>
+              <button class="btn btn-small btn-danger" onclick="confirmDeleteTransaction('${transaction.RowKey}', '${transaction.description}', '${accountId}')" title="Delete transaction">
+                <span class="icon">🗑️</span>
+              </button>
+            </div>
           </div>
         `;
       }).join('')
@@ -469,4 +474,59 @@ window.onclick = function(event) {
 
 function closeAccountSummaryModal() {
   document.getElementById('accountSummaryModal').style.display = 'none';
+}
+
+// Transaction deletion functions
+function confirmDeleteTransaction(transactionId, description, accountId) {
+  const confirmed = confirm(`Are you sure you want to delete this transaction?\n\nDescription: ${description}\n\nThis action cannot be undone and will update your account balance.`);
+  
+  if (confirmed) {
+    deleteTransaction(transactionId, accountId);
+  }
+}
+
+async function deleteTransaction(transactionId, accountId) {
+  try {
+    showLoading(true);
+    
+    const response = await fetch(`${API_CONFIG.getBaseUrl()}/transactions/${transactionId}`, {
+      method: 'DELETE',
+      headers: {
+        'X-User-ID': currentUser.id,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      showMessage('Transaction deleted successfully!', 'success');
+      
+      // Store which accounts were expanded before refreshing
+      const expandedAccountIds = Array.from(expandedAccounts);
+      
+      // Reload the account list to update individual account balances
+      await loadUserAccounts();
+      
+      // Also reload the financial summary to update totals
+      await loadFinancialSummary();
+      updateFinancialSummary();
+      
+      // Redisplay the accounts with updated balances
+      displayAccounts();
+      
+      // Reload summaries for all previously expanded accounts
+      for (const expandedAccountId of expandedAccountIds) {
+        await loadAccountSummary(expandedAccountId);
+      }
+      
+    } else {
+      const errorData = await response.json();
+      showMessage(`Error deleting transaction: ${errorData.error || 'Unknown error'}`, 'error');
+    }
+  } catch (error) {
+    console.error('Error deleting transaction:', error);
+    showMessage('Network error while deleting transaction. Please try again.', 'error');
+  } finally {
+    showLoading(false);
+  }
 }

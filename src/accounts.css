@@ -277,6 +277,12 @@ body {
   color: #dc3545;
 }
 
+.transaction-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 /* Buttons */
 .btn {
   background: #667eea;
@@ -312,6 +318,15 @@ body {
 .btn-small {
   padding: 8px 15px;
   font-size: 0.85em;
+}
+
+.btn-danger {
+  background: #dc3545;
+}
+
+.btn-danger:hover {
+  background: #c82333;
+  box-shadow: 0 5px 15px rgba(220, 53, 69, 0.4);
 }
 
 .icon {

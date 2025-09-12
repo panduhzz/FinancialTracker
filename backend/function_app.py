@@ -431,6 +431,47 @@ def get_account_summary(account_id: str, user_id: str) -> Dict:
         logging.error(f"Error getting account summary: {str(e)}")
         return {"error": str(e)}
 
+def delete_transaction(transaction_id: str, user_id: str) -> Dict:
+    """Delete a transaction and recalculate account balance"""
+    try:
+        table_client = get_table_client("Transactions")
+        
+        # Get the transaction to delete
+        try:
+            transaction_entity = table_client.get_entity(partition_key=user_id, row_key=transaction_id)
+        except Exception as e:
+            if "ResourceNotFound" in str(e) or "not found" in str(e).lower():
+                return {"success": False, "error": "Transaction not found"}
+            raise e
+        
+        # Extract transaction details for balance recalculation
+        account_id = transaction_entity.get('account_id')
+        amount = float(transaction_entity.get('amount', 0))
+        transaction_type = transaction_entity.get('transaction_type')
+        
+        # Delete the transaction
+        table_client.delete_entity(partition_key=user_id, row_key=transaction_id)
+        
+        # Recalculate account balance by reversing the transaction effect
+        if account_id and transaction_type:
+            # Reverse the balance change (opposite of what was done when adding)
+            if transaction_type == 'income':
+                # Income was added, so subtract it
+                update_account_balance(account_id, user_id, amount, 'expense')
+            elif transaction_type == 'expense':
+                # Expense was subtracted, so add it back
+                update_account_balance(account_id, user_id, amount, 'income')
+            elif transaction_type == 'transfer':
+                # Transfer was subtracted, so add it back
+                update_account_balance(account_id, user_id, amount, 'income')
+        
+        logging.info(f"Deleted transaction {transaction_id} for user {user_id}")
+        return {"success": True, "message": "Transaction deleted successfully"}
+        
+    except Exception as e:
+        logging.error(f"Error deleting transaction: {str(e)}")
+        return {"success": False, "error": str(e)}
+
 def get_user_financial_summary(user_id: str) -> Dict:
     """Get overall financial summary for a user"""
     try:
@@ -652,6 +693,63 @@ def transactions_api(req: func.HttpRequest) -> func.HttpResponse:
             json.dumps({"error": "Internal server error", "details": str(e)}),
             status_code=500,
             headers=headers
+        )
+
+@app.route(route="transactions/{transaction_id}", methods=["DELETE", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def delete_transaction_api(req: func.HttpRequest) -> func.HttpResponse:
+    """API endpoint for deleting transactions"""
+    try:
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        # Get user ID from request headers
+        user_id = req.headers.get('X-User-ID')
+        if not user_id:
+            # For development, use a default user ID
+            user_id = "dev-user-123"
+            logging.warning("No user ID provided, using default for development")
+        
+        if req.method == "DELETE":
+            # Get transaction ID from route parameter
+            transaction_id = req.route_params.get('transaction_id')
+            if not transaction_id:
+                return func.HttpResponse(
+                    json.dumps({"error": "Transaction ID is required"}),
+                    status_code=400,
+                    headers={"Content-Type": "application/json"}
+                )
+            
+            # Delete transaction
+            result = delete_transaction(transaction_id, user_id)
+            
+            if result.get('success'):
+                headers = get_cors_headers()
+                headers["Content-Type"] = "application/json"
+                return func.HttpResponse(
+                    json.dumps(result),
+                    status_code=200,
+                    headers=headers
+                )
+            else:
+                headers = get_cors_headers()
+                headers["Content-Type"] = "application/json"
+                return func.HttpResponse(
+                    json.dumps(result),
+                    status_code=400,
+                    headers=headers
+                )
+    
+    except Exception as e:
+        logging.error(f"Error in delete transaction API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error", "details": str(e)}),
+            status_code=500,
+            headers={"Content-Type": "application/json"}
         )
 
 @app.route(route="transactions/recent", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
