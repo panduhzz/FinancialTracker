@@ -236,12 +236,18 @@ def get_user_accounts(user_id: str) -> List[Dict]:
     """Retrieve all bank accounts for a specific user"""
     try:
         table_client = get_table_client("UserAccounts")
-        entities = table_client.list_entities(filter=f"PartitionKey eq '{user_id}' and is_active eq true")
+        # Get all accounts for the user, then filter in Python to handle missing is_active field
+        entities = table_client.list_entities(filter=f"PartitionKey eq '{user_id}'")
         accounts = []
         for entity in entities:
             account = dict(entity)
             account['account_id'] = account['RowKey']
-            accounts.append(account)
+            
+            # Filter out inactive accounts (default to True if is_active field doesn't exist)
+            is_active = account.get('is_active', True)
+            if is_active:
+                accounts.append(account)
+        
         return accounts
     except Exception as e:
         logging.error(f"Error getting user accounts: {str(e)}")
@@ -322,16 +328,26 @@ def update_account_balance(account_id: str, user_id: str, amount_change: float, 
         raise e
 
 def get_user_transactions(user_id: str, limit: int = 100) -> List[Dict]:
-    """Retrieve all transactions for a user across all accounts"""
+    """Retrieve all transactions for a user across all active accounts"""
     try:
+        # First, get all active accounts to filter transactions
+        active_accounts = get_user_accounts(user_id)
+        active_account_ids = {account['account_id'] for account in active_accounts}
+        
         table_client = get_table_client("Transactions")
         entities = table_client.list_entities(filter=f"PartitionKey eq '{user_id}'")
         
-        # Convert to list and sort by date (newest first)
-        transactions = [dict(entity) for entity in entities]
-        transactions.sort(key=lambda x: x.get('transaction_date', ''), reverse=True)
+        # Convert to list and filter out transactions from inactive accounts
+        all_transactions = [dict(entity) for entity in entities]
+        filtered_transactions = [
+            transaction for transaction in all_transactions 
+            if transaction.get('account_id') in active_account_ids
+        ]
         
-        return transactions[:limit]
+        # Sort by date (newest first)
+        filtered_transactions.sort(key=lambda x: x.get('transaction_date', ''), reverse=True)
+        
+        return filtered_transactions[:limit]
     except Exception as e:
         logging.error(f"Error getting user transactions: {str(e)}")
         raise e
@@ -470,6 +486,40 @@ def delete_transaction(transaction_id: str, user_id: str) -> Dict:
         
     except Exception as e:
         logging.error(f"Error deleting transaction: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+def delete_account(account_id: str, user_id: str) -> Dict:
+    """Soft delete an account by marking it as inactive"""
+    try:
+        table_client = get_table_client("UserAccounts")
+        
+        # Get the account to delete
+        try:
+            account_entity = table_client.get_entity(partition_key=user_id, row_key=account_id)
+            logging.info(f"Found account to delete: {account_entity.get('account_name', 'Unknown')} (ID: {account_id})")
+        except Exception as e:
+            if "ResourceNotFound" in str(e) or "not found" in str(e).lower():
+                logging.error(f"Account not found: {account_id}")
+                return {"success": False, "error": "Account not found"}
+            raise e
+        
+        # Verify the account belongs to the user
+        if account_entity.get('PartitionKey') != user_id:
+            logging.error(f"Unauthorized deletion attempt: User {user_id} tried to delete account {account_id}")
+            return {"success": False, "error": "Unauthorized: Account does not belong to user"}
+        
+        # Soft delete by marking as inactive
+        account_entity['is_active'] = False
+        account_entity['last_updated'] = datetime.utcnow().isoformat()
+        
+        # Update the account
+        table_client.update_entity(account_entity)
+        
+        logging.info(f"Successfully soft deleted account {account_id} ({account_entity.get('account_name', 'Unknown')}) for user {user_id}")
+        return {"success": True, "message": "Account deleted successfully"}
+        
+    except Exception as e:
+        logging.error(f"Error deleting account: {str(e)}")
         return {"success": False, "error": str(e)}
 
 def get_user_financial_summary(user_id: str) -> Dict:
@@ -917,6 +967,65 @@ def accounts_api(req: func.HttpRequest) -> func.HttpResponse:
             json.dumps({"error": "Internal server error", "details": str(e)}),
             status_code=500,
             headers={"Content-Type": "application/json"}
+        )
+
+@app.route(route="accounts/{account_id}", methods=["DELETE", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def delete_account_api(req: func.HttpRequest) -> func.HttpResponse:
+    """API endpoint for deleting an account"""
+    try:
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        # Get user ID from request headers
+        user_id = req.headers.get('X-User-ID')
+        if not user_id:
+            # For development, use a default user ID
+            user_id = "dev-user-123"
+            logging.warning("No user ID provided, using default for development")
+        
+        if req.method == "DELETE":
+            # Get account ID from route parameters
+            account_id = req.route_params.get('account_id')
+            if not account_id:
+                return func.HttpResponse(
+                    json.dumps({"error": "Account ID is required"}),
+                    status_code=400,
+                    headers=get_cors_headers()
+                )
+            
+            # Delete the account
+            result = delete_account(account_id, user_id)
+            
+            if result.get('success'):
+                return func.HttpResponse(
+                    json.dumps(result),
+                    status_code=200,
+                    headers=get_cors_headers()
+                )
+            else:
+                return func.HttpResponse(
+                    json.dumps(result),
+                    status_code=400,
+                    headers=get_cors_headers()
+                )
+        
+        return func.HttpResponse(
+            json.dumps({"error": "Method not allowed"}),
+            status_code=405,
+            headers=get_cors_headers()
+        )
+
+    except Exception as e:
+        logging.error(f"Error in delete account API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": str(e)}),
+            status_code=500,
+            headers=get_cors_headers()
         )
 
 @app.route(route="transactions", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)

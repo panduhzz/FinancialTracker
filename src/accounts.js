@@ -176,6 +176,7 @@ async function loadUserAccounts() {
     
     if (response.ok) {
       userAccounts = await response.json();
+      console.log('Loaded accounts:', userAccounts);
     } else {
       console.log('No accounts found or error loading accounts');
       userAccounts = [];
@@ -238,6 +239,10 @@ function displayAccounts() {
           <button class="btn btn-small" onclick="toggleAccountSummary('${account.account_id}')">
             <span class="icon">${isExpanded ? '▼' : '▶'}</span>
             ${isExpanded ? 'Hide' : 'View'} Summary
+          </button>
+          <button class="btn btn-small btn-danger" onclick="confirmDeleteAccount('${account.account_id}', '${account.account_name}')">
+            <span class="icon">🗑️</span>
+            Delete
           </button>
         </div>
         
@@ -536,6 +541,67 @@ async function deleteTransaction(transactionId, accountId) {
   } catch (error) {
     console.error('Error deleting transaction:', error);
     showMessage('Network error while deleting transaction. Please try again.', 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+// Account deletion functionality
+let accountToDelete = null;
+
+function confirmDeleteAccount(accountId, accountName) {
+  accountToDelete = accountId;
+  document.getElementById('deleteAccountName').textContent = accountName;
+  document.getElementById('deleteAccountModal').style.display = 'block';
+}
+
+function closeDeleteAccountModal() {
+  document.getElementById('deleteAccountModal').style.display = 'none';
+  accountToDelete = null;
+}
+
+async function deleteAccount() {
+  if (!accountToDelete) {
+    showMessage('No account selected for deletion.', 'error');
+    return;
+  }
+
+  console.log('Deleting account:', accountToDelete);
+  showLoading(true);
+  
+  try {
+    const response = await fetch(`${API_CONFIG.getBaseUrl()}/accounts/${accountToDelete}`, {
+      method: 'DELETE',
+      headers: {
+        'X-User-ID': currentUser.id,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log('Delete response status:', response.status);
+    
+    if (response.ok) {
+      const result = await response.json();
+      console.log('Delete result:', result);
+      showMessage(result.message || 'Account deleted successfully!', 'success');
+      
+      // Close the modal
+      closeDeleteAccountModal();
+      
+      // Reload the accounts list
+      console.log('Reloading user data after deletion...');
+      await loadUserData();
+      console.log('User accounts after reload:', userAccounts);
+      displayAccounts();
+      updateFinancialSummary();
+    } else {
+      const errorData = await response.json();
+      console.error('Delete failed:', errorData);
+      showMessage(errorData.error || 'Failed to delete account.', 'error');
+    }
+  } catch (error) {
+    console.error('Error deleting account:', error);
+    showMessage('Network error while deleting account. Please try again.', 'error');
   } finally {
     showLoading(false);
   }
