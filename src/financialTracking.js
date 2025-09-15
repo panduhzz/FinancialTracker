@@ -121,7 +121,7 @@ async function loadUserData() {
     
     // Load chart separately with error handling
     try {
-      await loadFinancialOverviewChart();
+      await loadAccountBalanceChart();
     } catch (error) {
       console.error('Error loading chart:', error);
       // Don't let chart errors break the page

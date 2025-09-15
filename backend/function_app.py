@@ -807,7 +807,7 @@ def get_account_monthly_history(account_id: str, user_id: str, months: int = 12)
         return {"error": str(e)}
 
 def get_balance_history(user_id: str, months: int = 12) -> Dict:
-    """Calculate historical balance snapshots for all accounts"""
+    """Calculate historical balance snapshots for all accounts by reconstructing from transactions"""
     try:
         # Get all user accounts
         accounts = get_user_accounts(user_id)
@@ -820,18 +820,62 @@ def get_balance_history(user_id: str, months: int = 12) -> Dict:
         current_date = datetime.utcnow()
         monthly_balances = {}
         
+        # Create a map of account_id to initial balance (current balance)
+        account_initial_balances = {acc.get('account_id'): acc.get('current_balance', 0) for acc in accounts}
+        
+        # Generate month keys for the last N months
+        month_keys = []
         for i in range(months):
             month_date = current_date - timedelta(days=30*i)
             month_key = month_date.strftime('%Y-%m')
+            month_keys.append(month_key)
             monthly_balances[month_key] = {}
-            
-            # Initialize with current account balances (simplified approach)
+        
+        # Sort month keys chronologically (oldest first)
+        month_keys.sort()
+        
+        # For each month, calculate the balance at the END of that month
+        for month_key in month_keys:
+            # For each account, calculate what the balance was at the end of this month
             for account in accounts:
                 account_id = account.get('account_id')
                 account_name = account.get('account_name', '')
+                
+                # Start with the current balance
+                balance_at_end_of_month = account_initial_balances[account_id]
+                
+                # Subtract all transactions that happened AFTER this month
+                for transaction in transactions:
+                    transaction_date_str = transaction.get('transaction_date', '')
+                    if not transaction_date_str:
+                        continue
+                    
+                    # Parse transaction date and compare with month_key
+                    try:
+                        transaction_date = datetime.fromisoformat(transaction_date_str.replace('Z', '+00:00'))
+                        transaction_month = transaction_date.strftime('%Y-%m')
+                        
+                        # If transaction happened after this month, reverse its effect
+                        if (transaction.get('account_id') == account_id and 
+                            transaction_month > month_key):
+                            
+                            amount = float(transaction.get('amount', 0))
+                            transaction_type = transaction.get('transaction_type', '')
+                            
+                            # Reverse the transaction effect to get historical balance
+                            if transaction_type == 'income':
+                                balance_at_end_of_month -= amount  # Remove future income
+                            elif transaction_type == 'expense':
+                                balance_at_end_of_month += amount  # Add back future expenses
+                            elif transaction_type == 'transfer':
+                                balance_at_end_of_month += amount  # Add back future transfers (money leaving)
+                    except Exception as e:
+                        logging.warning(f"Error parsing transaction date {transaction_date_str}: {e}")
+                        continue
+                
                 monthly_balances[month_key][account_id] = {
                     'account_name': account_name,
-                    'balance': account.get('current_balance', 0)
+                    'balance': balance_at_end_of_month
                 }
         
         # Calculate total net worth for each month
@@ -1427,6 +1471,66 @@ def balance_history_api(req: func.HttpRequest) -> func.HttpResponse:
     
     except Exception as e:
         logging.error(f"Error in balance history API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error", "details": str(e)}),
+            status_code=500,
+            headers={"Content-Type": "application/json"}
+        )
+
+@app.route(route="analytics/account-balance", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def account_balance_api(req: func.HttpRequest) -> func.HttpResponse:
+    """Get simplified account balance history for chart display"""
+    try:
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        # Get user ID from request headers
+        user_id = req.headers.get('X-User-ID')
+        if not user_id:
+            # For development, use a default user ID
+            user_id = "dev-user-123"
+            logging.warning("No user ID provided, using default for development")
+        
+        # Get months parameter from query string (default: 12)
+        months = int(req.params.get('months', 12))
+        
+        # Get balance history
+        balance_data = get_balance_history(user_id, months)
+        
+        if "error" in balance_data:
+            return func.HttpResponse(
+                json.dumps({"error": balance_data["error"]}),
+                status_code=500,
+                headers=get_cors_headers()
+            )
+        
+        # Return simplified data structure for the chart
+        monthly_net_worth = balance_data.get('monthly_net_worth', {})
+        chart_config = balance_data.get('chart_config', {})
+        
+        # Sort months chronologically
+        sorted_months = sorted(monthly_net_worth.keys())
+        balance_values = [monthly_net_worth[month] for month in sorted_months]
+        
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
+        return func.HttpResponse(
+            json.dumps({
+                "months": sorted_months,
+                "balances": balance_values,
+                "chart_config": chart_config
+            }),
+            status_code=200,
+            headers=headers
+        )
+    
+    except Exception as e:
+        logging.error(f"Error in account balance API: {str(e)}")
         return func.HttpResponse(
             json.dumps({"error": "Internal server error", "details": str(e)}),
             status_code=500,

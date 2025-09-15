@@ -60,30 +60,31 @@ function formatCurrency(value) {
 }
 
 // Chart rendering functions
-function renderFinancialOverviewChart(canvasId, data) {
+function renderAccountBalanceChart(canvasId, data) {
+  console.log(`Looking for canvas element with id: ${canvasId}`);
   const ctx = document.getElementById(canvasId);
   if (!ctx) {
     console.error(`Canvas element with id '${canvasId}' not found`);
+    console.log('Available canvas elements:', document.querySelectorAll('canvas'));
     return;
   }
+  console.log('Canvas element found:', ctx);
   
   // Destroy existing chart if it exists
   if (chartInstances[canvasId]) {
     chartInstances[canvasId].destroy();
   }
   
-  const months = Object.keys(data.monthly_data);
-  const monthLabels = generateMonthLabels(months.length);
+  // Generate month labels from the data
+  const monthLabels = data.months.map(month => {
+    const [year, monthNum] = month.split('-');
+    const date = new Date(year, monthNum - 1, 1);
+    const monthName = date.toLocaleDateString('en-US', { month: 'short' });
+    return `${monthName} ${year}`;
+  });
   
-  // Prepare data arrays
-  const incomeData = months.map(month => data.monthly_data[month].income || 0);
-  const expenseData = months.map(month => data.monthly_data[month].expense || 0);
-  const netData = months.map(month => data.monthly_data[month].net || 0);
-  const balanceData = months.map(month => data.monthly_data[month].total_balance || 0);
-  
-  // Get Y-axis scales from backend
-  const yAxisScale = data.chart_config?.y_axis_scale || calculateYAxisScale([...incomeData, ...expenseData, ...netData]);
-  const balanceYAxisScale = data.chart_config?.balance_y_axis_scale || calculateYAxisScale(balanceData);
+  // Get Y-axis scale from backend or calculate it
+  const yAxisScale = data.chart_config?.y_axis_scale || calculateYAxisScale(data.balances);
   
   const chartConfig = {
     type: 'line',
@@ -91,41 +92,18 @@ function renderFinancialOverviewChart(canvasId, data) {
       labels: monthLabels,
       datasets: [
         {
-          label: 'Income',
-          data: incomeData,
-          borderColor: '#28a745',
-          backgroundColor: 'rgba(40, 167, 69, 0.1)',
-          tension: 0.4,
-          fill: false,
-          yAxisID: 'y'
-        },
-        {
-          label: 'Expenses',
-          data: expenseData,
-          borderColor: '#dc3545',
-          backgroundColor: 'rgba(220, 53, 69, 0.1)',
-          tension: 0.4,
-          fill: false,
-          yAxisID: 'y'
-        },
-        {
-          label: 'Net (Income - Expenses)',
-          data: netData,
+          label: 'Account Balance',
+          data: data.balances,
           borderColor: '#667eea',
           backgroundColor: 'rgba(102, 126, 234, 0.1)',
-          tension: 0.4,
-          fill: false,
-          yAxisID: 'y'
-        },
-        {
-          label: 'Total Account Balance',
-          data: balanceData,
-          borderColor: '#ffc107',
-          backgroundColor: 'rgba(255, 193, 7, 0.1)',
-          tension: 0.4,
-          fill: false,
-          yAxisID: 'y1',
-          borderWidth: 3
+          tension: 0,  // No curve - straight lines between points
+          fill: true,
+          borderWidth: 3,
+          pointBackgroundColor: '#667eea',
+          pointBorderColor: '#667eea',
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          stepped: false  // Ensure it's not stepped
         }
       ]
     },
@@ -135,11 +113,12 @@ function renderFinancialOverviewChart(canvasId, data) {
       plugins: {
         legend: {
           position: 'top',
+          display: true
         },
         tooltip: {
           callbacks: {
             label: function(context) {
-              return context.dataset.label + ': ' + formatCurrency(context.parsed.y);
+              return 'Account Balance: ' + formatCurrency(context.parsed.y);
             }
           }
         }
@@ -158,7 +137,7 @@ function renderFinancialOverviewChart(canvasId, data) {
           position: 'left',
           title: {
             display: true,
-            text: 'Income/Expenses ($)'
+            text: 'Account Balance ($)'
           },
           min: yAxisScale.min,
           max: yAxisScale.max,
@@ -168,26 +147,6 @@ function renderFinancialOverviewChart(canvasId, data) {
               return formatCurrency(value);
             }
           }
-        },
-        y1: {
-          type: 'linear',
-          display: true,
-          position: 'right',
-          title: {
-            display: true,
-            text: 'Account Balance ($)'
-          },
-          min: balanceYAxisScale.min,
-          max: balanceYAxisScale.max,
-          ticks: {
-            stepSize: balanceYAxisScale.interval,
-            callback: function(value) {
-              return formatCurrency(value);
-            }
-          },
-          grid: {
-            drawOnChartArea: false,
-          },
         }
       },
       interaction: {
@@ -202,10 +161,13 @@ function renderFinancialOverviewChart(canvasId, data) {
 
 
 // API functions for loading chart data
-async function loadFinancialOverviewChart() {
+async function loadAccountBalanceChart() {
+  console.log('loadAccountBalanceChart function called');
   try {
     const userId = localStorage.getItem('userId') || 'dev-user-123';
-    const response = await fetch(`${API_CONFIG.getBaseUrl()}/analytics/monthly-summary?months=12`, {
+    console.log('Loading chart data for user:', userId);
+    
+    const response = await fetch(`${API_CONFIG.getBaseUrl()}/analytics/account-balance?months=12`, {
       method: 'GET',
       headers: {
         'X-User-ID': userId,
@@ -218,20 +180,27 @@ async function loadFinancialOverviewChart() {
     }
     
     const data = await response.json();
+    console.log('Chart data received:', data);
     
     if (data.error) {
-      console.error('Error loading financial overview data:', data.error);
+      console.error('Error loading account balance data:', data.error);
       showMessage('Error loading chart data: ' + data.error, 'error');
       return;
     }
     
     // Render the chart
-    renderFinancialOverviewChart('overviewChart', data);
+    console.log('Rendering chart with canvas ID: financialOverviewChart');
+    renderAccountBalanceChart('financialOverviewChart', data);
     
   } catch (error) {
-    console.error('Error loading financial overview chart:', error);
+    console.error('Error loading account balance chart:', error);
     showMessage('Error loading chart data', 'error');
   }
+}
+
+// Keep the old function name for backward compatibility
+async function loadFinancialOverviewChart() {
+  return loadAccountBalanceChart();
 }
 
 
@@ -285,3 +254,6 @@ function showMessage(message, type = 'info') {
     }
   }, 5000);
 }
+
+// Debug: Confirm charts.js is loaded
+console.log('charts.js loaded successfully - loadAccountBalanceChart function available:', typeof loadAccountBalanceChart);
