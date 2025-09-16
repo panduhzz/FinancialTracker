@@ -144,12 +144,8 @@ async function loadUserData() {
 
 async function loadFinancialSummary() {
   try {
-    const response = await fetch(`${API_CONFIG.getBaseUrl()}/financial-summary`, {
-      method: 'GET',
-      headers: {
-        'X-User-ID': currentUser.id,
-        'Content-Type': 'application/json'
-      }
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/financial-summary`, {
+      method: 'GET'
     });
     
     if (response.ok) {
@@ -166,12 +162,8 @@ async function loadFinancialSummary() {
 
 async function loadUserAccounts() {
   try {
-    const response = await fetch(`${API_CONFIG.getBaseUrl()}/accounts`, {
-      method: 'GET',
-      headers: {
-        'X-User-ID': currentUser.id,
-        'Content-Type': 'application/json'
-      }
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/accounts`, {
+      method: 'GET'
     });
     
     if (response.ok) {
@@ -284,12 +276,8 @@ async function toggleAccountSummary(accountId) {
 
 async function loadAccountSummary(accountId) {
   try {
-    const response = await fetch(`${API_CONFIG.getBaseUrl()}/accounts/summary/${accountId}`, {
-      method: 'GET',
-      headers: {
-        'X-User-ID': currentUser.id,
-        'Content-Type': 'application/json'
-      }
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/accounts/summary/${accountId}`, {
+      method: 'GET'
     });
     
     if (response.ok) {
@@ -432,12 +420,8 @@ function handleSignOut() {
 async function testAccountSummary() {
   try {
     console.log('Testing account summary...');
-    const response = await fetch(`${API_CONFIG.getBaseUrl()}/test-account-summary`, {
-      method: 'GET',
-      headers: {
-        'X-User-ID': currentUser.id,
-        'Content-Type': 'application/json'
-      }
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/test-account-summary`, {
+      method: 'GET'
     });
     
     if (response.ok) {
@@ -504,12 +488,8 @@ async function deleteTransaction(transactionId, accountId) {
   try {
     showLoading(true);
     
-    const response = await fetch(`${API_CONFIG.getBaseUrl()}/transactions/${transactionId}`, {
-      method: 'DELETE',
-      headers: {
-        'X-User-ID': currentUser.id,
-        'Content-Type': 'application/json'
-      }
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/transactions/${transactionId}`, {
+      method: 'DELETE'
     });
     
     if (response.ok) {
@@ -570,12 +550,8 @@ async function deleteAccount() {
   showLoading(true);
   
   try {
-    const response = await fetch(`${API_CONFIG.getBaseUrl()}/accounts/${accountToDelete}`, {
-      method: 'DELETE',
-      headers: {
-        'X-User-ID': currentUser.id,
-        'Content-Type': 'application/json'
-      }
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/accounts/${accountToDelete}`, {
+      method: 'DELETE'
     });
     
     console.log('Delete response status:', response.status);

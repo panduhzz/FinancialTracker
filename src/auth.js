@@ -9,6 +9,10 @@ window.addEventListener('load', function() {
       knownAuthorities: ['PanduhzProject.b2clogin.com'],
       redirectUri: window.location.origin,
     },
+    // Add API scope for secure backend communication
+    api: {
+      scopes: ['e8c1227e-f95c-4a0a-bf39-f3ce4c78c781/access_as_user']
+    }
   };
   
   // Initialize MSAL instance
@@ -42,7 +46,7 @@ function signIn() {
   }
 
   const loginRequest = {
-    scopes: ['openid', 'profile', 'offline_access'],
+    scopes: ['openid', 'profile', 'offline_access', 'https://PanduhzProject.onmicrosoft.com/api://e8c1227e-f95c-4a0a-bf39-f3ce4c78c781/access_as_user'],
   };
 
   window.msalInstance.loginPopup(loginRequest)
@@ -86,6 +90,67 @@ function checkToken(){
   }
 }
   
+// Secure API request function
+async function makeAuthenticatedRequest(url, options = {}) {
+  try {
+    const account = window.msalInstance.getAllAccounts()[0];
+    if (!account) {
+      throw new Error('User not authenticated');
+    }
+    
+    // Use API scope (the working configuration)
+    let tokenResponse;
+    try {
+      tokenResponse = await window.msalInstance.acquireTokenSilent({
+        scopes: ['https://PanduhzProject.onmicrosoft.com/api://e8c1227e-f95c-4a0a-bf39-f3ce4c78c781/access_as_user'],
+        account: account
+      });
+      console.log('Successfully acquired token with API scope');
+    } catch (error) {
+      console.error('Failed to acquire token with API scope:', error);
+      throw error;
+    }
+    
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${tokenResponse.accessToken}`,
+      ...options.headers
+    };
+    
+    return fetch(url, {
+      ...options,
+      headers
+    });
+  } catch (error) {
+    console.error('Error making authenticated request:', error);
+    
+    // If silent token acquisition fails, try interactive
+    if (error.errorCode === 'consent_required' || error.errorCode === 'interaction_required') {
+      try {
+        const tokenResponse = await window.msalInstance.acquireTokenPopup({
+          scopes: ['https://PanduhzProject.onmicrosoft.com/api://e8c1227e-f95c-4a0a-bf39-f3ce4c78c781/access_as_user']
+        });
+        
+        const headers = {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${tokenResponse.accessToken}`,
+          ...options.headers
+        };
+        
+        return fetch(url, {
+          ...options,
+          headers
+        });
+      } catch (popupError) {
+        console.error('Error acquiring token via popup:', popupError);
+        throw popupError;
+      }
+    }
+    
+    throw error;
+  }
+}
+
 // Check if user is already logged in
   /*
   const currentAccounts = msalInstance.getAllAccounts();

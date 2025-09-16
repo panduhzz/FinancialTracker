@@ -140,12 +140,8 @@ async function loadUserData() {
 
 async function loadUserAccounts() {
   try {
-    const response = await fetch(`${API_CONFIG.getBaseUrl()}/accounts`, {
-      method: 'GET',
-      headers: {
-        'X-User-ID': currentUser.id,
-        'Content-Type': 'application/json'
-      }
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/accounts`, {
+      method: 'GET'
     });
     
     if (response.ok) {
@@ -163,12 +159,8 @@ async function loadUserAccounts() {
 
 async function loadRecentTransactions() {
   try {
-    const response = await fetch(`${API_CONFIG.getBaseUrl()}/transactions/recent`, {
-      method: 'GET',
-      headers: {
-        'X-User-ID': currentUser.id,
-        'Content-Type': 'application/json'
-      }
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/transactions/recent`, {
+      method: 'GET'
     });
     
     if (response.ok) {
@@ -299,12 +291,8 @@ document.getElementById('createAccountForm').addEventListener('submit', async fu
   try {
     showLoading(true);
     
-    const response = await fetch(`${API_CONFIG.getBaseUrl()}/accounts`, {
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/accounts`, {
       method: 'POST',
-      headers: {
-        'X-User-ID': currentUser.id,
-        'Content-Type': 'application/json'
-      },
       body: JSON.stringify(accountData)
     });
     
@@ -344,12 +332,8 @@ document.getElementById('addTransactionForm').addEventListener('submit', async f
   try {
     showLoading(true);
     
-    const response = await fetch(`${API_CONFIG.getBaseUrl()}/transactions`, {
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/transactions`, {
       method: 'POST',
-      headers: {
-        'X-User-ID': currentUser.id,
-        'Content-Type': 'application/json'
-      },
       body: JSON.stringify(transactionData)
     });
     

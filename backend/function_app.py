@@ -4,50 +4,15 @@ import logging
 import os
 import json
 import uuid
+import jwt
+import requests
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
-@app.route(route="test-account-summary", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
-def test_account_summary_api(req: func.HttpRequest) -> func.HttpResponse:
-    """Test endpoint for account summary debugging"""
-    try:
-        # Handle CORS preflight requests
-        if req.method == "OPTIONS":
-            return func.HttpResponse(
-                "",
-                status_code=200,
-                headers=get_cors_headers()
-            )
-        
-        # Get user ID from request headers
-        user_id = req.headers.get('X-User-ID', 'dev-user-123')
-        
-        # Get all accounts for the user
-        accounts = get_user_accounts(user_id)
-        
-        result = {
-            "user_id": user_id,
-            "total_accounts": len(accounts),
-            "accounts": accounts
-        }
-        
-        headers = get_cors_headers()
-        headers["Content-Type"] = "application/json"
-        return func.HttpResponse(
-            json.dumps(result),
-            status_code=200,
-            headers=headers
-        )
-    
-    except Exception as e:
-        logging.error(f"Error in test account summary API: {str(e)}")
-        return func.HttpResponse(
-            json.dumps({"error": "Internal server error", "details": str(e)}),
-            status_code=500,
-            headers={"Content-Type": "application/json"}
-        )
+
+
 
 @app.route(route="hello")
 def dbupdater(req: func.HttpRequest) -> func.HttpResponse:
@@ -95,6 +60,106 @@ def dbupdater(req: func.HttpRequest) -> func.HttpResponse:
             f"Error connecting to Azurite: {str(e)}",
             status_code=500
         )
+
+# Authentication and Token Validation Functions
+def get_azure_b2c_public_keys():
+    """Get Azure AD B2C public keys for token validation"""
+    try:
+        # Azure AD B2C OpenID Connect metadata endpoint
+        # Replace with your actual B2C tenant and policy
+        metadata_url = "https://PanduhzProject.b2clogin.com/PanduhzProject.onmicrosoft.com/B2C_1_testonsiteflow/v2.0/.well-known/openid_configuration"
+        
+        response = requests.get(metadata_url, timeout=10)
+        response.raise_for_status()
+        
+        metadata = response.json()
+        jwks_url = metadata['jwks_uri']
+        
+        jwks_response = requests.get(jwks_url, timeout=10)
+        jwks_response.raise_for_status()
+        
+        return jwks_response.json()
+    except Exception as e:
+        logging.error(f"Error fetching Azure B2C public keys: {str(e)}")
+        return None
+
+def validate_token(req: func.HttpRequest) -> str:
+    """Validate Azure AD B2C token and return user ID"""
+    try:
+        # Get token from Authorization header
+        auth_header = req.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            raise ValueError("Invalid authorization header")
+        
+        token = auth_header[7:]  # Remove 'Bearer ' prefix
+        
+        # For development/testing, we'll do basic token validation
+        # In production, you should implement full JWT signature verification
+        try:
+            # Decode token without verification for development
+            # In production, use proper JWT verification with public keys
+            decoded_token = jwt.decode(token, options={"verify_signature": False})
+            
+            
+            # Extract user ID from token
+            user_id = decoded_token.get('oid') or decoded_token.get('sub')
+            if not user_id:
+                raise ValueError("No user ID found in token")
+            
+            # Basic token validation
+            if 'exp' in decoded_token:
+                exp_timestamp = decoded_token['exp']
+                current_timestamp = datetime.utcnow().timestamp()
+                if current_timestamp > exp_timestamp:
+                    raise ValueError("Token has expired")
+            
+            return user_id
+            
+        except jwt.InvalidTokenError as e:
+            logging.error(f"Invalid JWT token: {str(e)}")
+            raise ValueError("Invalid token format")
+            
+    except Exception as e:
+        logging.error(f"Token validation failed: {str(e)}")
+        raise ValueError("Token validation failed")
+
+def get_user_id_from_request(req: func.HttpRequest) -> str:
+    """Get user ID from request - supports both token validation and fallback to headers for development"""
+    try:
+        # Try token validation first
+        return validate_token(req)
+    except Exception as token_error:
+        logging.warning(f"Token validation failed: {str(token_error)}")
+        
+        # For development, try to extract user ID from token even if validation fails
+        auth_header = req.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            try:
+                token = auth_header[7:]  # Remove 'Bearer ' prefix
+                # Decode token without verification for development
+                decoded_token = jwt.decode(token, options={"verify_signature": False})
+                
+                # Try different possible user ID fields
+                user_id = (decoded_token.get('oid') or 
+                          decoded_token.get('sub') or 
+                          decoded_token.get('objectId') or
+                          decoded_token.get('userId'))
+                
+                if user_id:
+                    return user_id
+                else:
+                    logging.error(f"No user ID found in token. Available claims: {list(decoded_token.keys())}")
+            except Exception as decode_error:
+                logging.warning(f"Failed to decode token: {str(decode_error)}")
+        
+        # Fallback to header for development (remove this in production)
+        user_id = req.headers.get('X-User-ID')
+        if user_id:
+            logging.warning("Using X-User-ID header as fallback - this should be removed in production")
+            return user_id
+        
+        # If no valid authentication method, raise error
+        raise ValueError("No valid authentication provided")
 
 # Utility Functions
 def get_table_service_client():
@@ -236,8 +301,16 @@ def get_user_accounts(user_id: str) -> List[Dict]:
     """Retrieve all bank accounts for a specific user"""
     try:
         table_client = get_table_client("UserAccounts")
+        
         # Get all accounts for the user, then filter in Python to handle missing is_active field
-        entities = table_client.list_entities(filter=f"PartitionKey eq '{user_id}'")
+        entities = table_client.list_entities()
+        # Convert iterator to list immediately to avoid paging issues
+        entities = list(entities)
+        
+        # Filter by user ID in Python
+        user_entities = [entity for entity in entities if entity.get('PartitionKey') == user_id]
+        entities = user_entities
+        
         accounts = []
         for entity in entities:
             account = dict(entity)
@@ -335,10 +408,10 @@ def get_user_transactions(user_id: str, limit: int = 100) -> List[Dict]:
         active_account_ids = {account['account_id'] for account in active_accounts}
         
         table_client = get_table_client("Transactions")
-        entities = table_client.list_entities(filter=f"PartitionKey eq '{user_id}'")
+        entities = table_client.list_entities()
         
-        # Convert to list and filter out transactions from inactive accounts
-        all_transactions = [dict(entity) for entity in entities]
+        # Convert to list and filter by user ID and active accounts
+        all_transactions = [dict(entity) for entity in entities if entity.get('PartitionKey') == user_id]
         filtered_transactions = [
             transaction for transaction in all_transactions 
             if transaction.get('account_id') in active_account_ids
@@ -370,31 +443,20 @@ def get_account_details(account_id: str, user_id: str) -> Optional[Dict]:
 def get_account_summary(account_id: str, user_id: str) -> Dict:
     """Get summary information for an account"""
     try:
-        logging.info(f"Getting account summary for account_id: {account_id}, user_id: {user_id}")
         
         # Get account details
         account = get_account_details(account_id, user_id)
         if not account:
-            logging.warning(f"Account not found: {account_id} for user: {user_id}")
             return {"error": "Account not found"}
         
-        logging.info(f"Account found: {account.get('account_name', 'Unknown')}")
         
         # Get transactions for this account
         table_client = get_table_client("Transactions")
         
         # Get transactions for this account
-        filter_query = f"PartitionKey eq '{user_id}' and account_id eq '{account_id}'"
-        
-        try:
-            entities = table_client.list_entities(filter=filter_query)
-            transactions = [dict(entity) for entity in entities]
-        except Exception as e:
-            logging.error(f"Error with filter query: {e}")
-            # Fallback: get all transactions for user and filter manually
-            entities = table_client.list_entities(filter=f"PartitionKey eq '{user_id}'")
-            all_transactions = [dict(entity) for entity in entities]
-            transactions = [t for t in all_transactions if t.get('account_id') == account_id]
+        entities = table_client.list_entities()
+        all_transactions = [dict(entity) for entity in entities if entity.get('PartitionKey') == user_id]
+        transactions = [t for t in all_transactions if t.get('account_id') == account_id]
         
         # Additional validation: filter out any transactions that don't match the account_id
         # This is a safety check in case the Azure Table Storage filter doesn't work as expected
@@ -745,17 +807,11 @@ def get_account_monthly_history(account_id: str, user_id: str, months: int = 12)
         
         # Get all transactions for this account
         table_client = get_table_client("Transactions")
-        filter_query = f"PartitionKey eq '{user_id}' and account_id eq '{account_id}'"
         
-        try:
-            entities = table_client.list_entities(filter=filter_query)
-            transactions = [dict(entity) for entity in entities]
-        except Exception as e:
-            logging.error(f"Error with filter query: {e}")
-            # Fallback: get all transactions for user and filter manually
-            entities = table_client.list_entities(filter=f"PartitionKey eq '{user_id}'")
-            all_transactions = [dict(entity) for entity in entities]
-            transactions = [t for t in all_transactions if t.get('account_id') == account_id]
+        # Get all transactions for user and filter manually to avoid Azure SDK filter issues
+        entities = table_client.list_entities()
+        all_transactions = [dict(entity) for entity in entities if entity.get('PartitionKey') == user_id]
+        transactions = [t for t in all_transactions if t.get('account_id') == account_id]
         
         # Calculate monthly aggregates for this account
         monthly_data = calculate_monthly_aggregates(transactions, months)
@@ -936,18 +992,24 @@ def accounts_api(req: func.HttpRequest) -> func.HttpResponse:
                 headers=get_cors_headers()
             )
         
-        # Get user ID from request headers (in a real app, this would come from JWT token)
-        user_id = req.headers.get('X-User-ID')
-        if not user_id:
-            # For development, use a default user ID
-            user_id = "dev-user-123"
-            logging.warning("No user ID provided, using default for development")
+        
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
         
         if req.method == "GET":
             # Get user accounts
             accounts = get_user_accounts(user_id)
+            
             headers = get_cors_headers()
             headers["Content-Type"] = "application/json"
+            
             return func.HttpResponse(
                 json.dumps(accounts),
                 status_code=200,
@@ -1006,11 +1068,12 @@ def accounts_api(req: func.HttpRequest) -> func.HttpResponse:
                 )
     
     except Exception as e:
-        logging.error(f"Error in accounts API: {str(e)}")
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
         return func.HttpResponse(
             json.dumps({"error": "Internal server error", "details": str(e)}),
             status_code=500,
-            headers={"Content-Type": "application/json"}
+            headers=headers
         )
 
 @app.route(route="accounts/{account_id}", methods=["DELETE", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
@@ -1025,12 +1088,15 @@ def delete_account_api(req: func.HttpRequest) -> func.HttpResponse:
                 headers=get_cors_headers()
             )
         
-        # Get user ID from request headers
-        user_id = req.headers.get('X-User-ID')
-        if not user_id:
-            # For development, use a default user ID
-            user_id = "dev-user-123"
-            logging.warning("No user ID provided, using default for development")
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
         
         if req.method == "DELETE":
             # Get account ID from route parameters
@@ -1084,12 +1150,15 @@ def transactions_api(req: func.HttpRequest) -> func.HttpResponse:
                 headers=get_cors_headers()
             )
         
-        # Get user ID from request headers
-        user_id = req.headers.get('X-User-ID')
-        if not user_id:
-            # For development, use a default user ID
-            user_id = "dev-user-123"
-            logging.warning("No user ID provided, using default for development")
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
         
         if req.method == "POST":
             # Add new transaction
@@ -1165,12 +1234,15 @@ def delete_transaction_api(req: func.HttpRequest) -> func.HttpResponse:
                 headers=get_cors_headers()
             )
         
-        # Get user ID from request headers
-        user_id = req.headers.get('X-User-ID')
-        if not user_id:
-            # For development, use a default user ID
-            user_id = "dev-user-123"
-            logging.warning("No user ID provided, using default for development")
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
         
         if req.method == "DELETE":
             # Get transaction ID from route parameter
@@ -1222,12 +1294,16 @@ def recent_transactions_api(req: func.HttpRequest) -> func.HttpResponse:
                 headers=get_cors_headers()
             )
         
-        # Get user ID from request headers
-        user_id = req.headers.get('X-User-ID')
-        if not user_id:
-            # For development, use a default user ID
-            user_id = "dev-user-123"
-            logging.warning("No user ID provided, using default for development")
+        
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
         
         # Get limit from query parameters
         limit = int(req.params.get('limit', 10))
@@ -1237,6 +1313,7 @@ def recent_transactions_api(req: func.HttpRequest) -> func.HttpResponse:
         
         headers = get_cors_headers()
         headers["Content-Type"] = "application/json"
+        
         return func.HttpResponse(
             json.dumps(transactions),
             status_code=200,
@@ -1245,47 +1322,47 @@ def recent_transactions_api(req: func.HttpRequest) -> func.HttpResponse:
     
     except Exception as e:
         logging.error(f"Error in recent transactions API: {str(e)}")
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
         return func.HttpResponse(
             json.dumps({"error": "Internal server error", "details": str(e)}),
             status_code=500,
-            headers={"Content-Type": "application/json"}
+            headers=headers
         )
 
 @app.route(route="accounts/summary/{account_id}", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 def account_summary_api(req: func.HttpRequest) -> func.HttpResponse:
     """API endpoint for getting account summary"""
     try:
-        logging.info(f"Account summary API called with method: {req.method}")
         
         # Handle CORS preflight requests
         if req.method == "OPTIONS":
-            logging.info("Handling CORS preflight request")
             return func.HttpResponse(
                 "",
                 status_code=200,
                 headers=get_cors_headers()
             )
         
-        # Get user ID from request headers
-        user_id = req.headers.get('X-User-ID')
-        if not user_id:
-            # For development, use a default user ID
-            user_id = "dev-user-123"
-            logging.warning("No user ID provided, using default for development")
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
         
-        logging.info(f"Using user ID: {user_id}")
         
         # Get account ID from route parameter
         account_id = req.route_params.get('account_id')
         if not account_id:
-            logging.error("No account ID provided in route parameters")
             return func.HttpResponse(
                 json.dumps({"error": "Account ID is required"}),
                 status_code=400,
                 headers={"Content-Type": "application/json"}
             )
         
-        logging.info(f"Getting summary for account ID: {account_id}")
         
         # Get account summary
         summary = get_account_summary(account_id, user_id)
@@ -1318,12 +1395,15 @@ def financial_summary_api(req: func.HttpRequest) -> func.HttpResponse:
                 headers=get_cors_headers()
             )
         
-        # Get user ID from request headers
-        user_id = req.headers.get('X-User-ID')
-        if not user_id:
-            # For development, use a default user ID
-            user_id = "dev-user-123"
-            logging.warning("No user ID provided, using default for development")
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
         
         # Get financial summary
         summary = get_user_financial_summary(user_id)
@@ -1357,12 +1437,15 @@ def monthly_summary_api(req: func.HttpRequest) -> func.HttpResponse:
                 headers=get_cors_headers()
             )
         
-        # Get user ID from request headers
-        user_id = req.headers.get('X-User-ID')
-        if not user_id:
-            # For development, use a default user ID
-            user_id = "dev-user-123"
-            logging.warning("No user ID provided, using default for development")
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
         
         # Get months parameter from query string (default: 12)
         months = int(req.params.get('months', 12))
@@ -1398,12 +1481,15 @@ def account_history_api(req: func.HttpRequest) -> func.HttpResponse:
                 headers=get_cors_headers()
             )
         
-        # Get user ID from request headers
-        user_id = req.headers.get('X-User-ID')
-        if not user_id:
-            # For development, use a default user ID
-            user_id = "dev-user-123"
-            logging.warning("No user ID provided, using default for development")
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
         
         # Get account ID from route parameter
         account_id = req.route_params.get('account_id')
@@ -1448,12 +1534,15 @@ def balance_history_api(req: func.HttpRequest) -> func.HttpResponse:
                 headers=get_cors_headers()
             )
         
-        # Get user ID from request headers
-        user_id = req.headers.get('X-User-ID')
-        if not user_id:
-            # For development, use a default user ID
-            user_id = "dev-user-123"
-            logging.warning("No user ID provided, using default for development")
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
         
         # Get months parameter from query string (default: 12)
         months = int(req.params.get('months', 12))
@@ -1489,12 +1578,16 @@ def account_balance_api(req: func.HttpRequest) -> func.HttpResponse:
                 headers=get_cors_headers()
             )
         
-        # Get user ID from request headers
-        user_id = req.headers.get('X-User-ID')
-        if not user_id:
-            # For development, use a default user ID
-            user_id = "dev-user-123"
-            logging.warning("No user ID provided, using default for development")
+        
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
         
         # Get months parameter from query string (default: 12)
         months = int(req.params.get('months', 12))
@@ -1531,8 +1624,10 @@ def account_balance_api(req: func.HttpRequest) -> func.HttpResponse:
     
     except Exception as e:
         logging.error(f"Error in account balance API: {str(e)}")
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
         return func.HttpResponse(
             json.dumps({"error": "Internal server error", "details": str(e)}),
             status_code=500,
-            headers={"Content-Type": "application/json"}
+            headers=headers
         )

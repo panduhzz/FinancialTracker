@@ -167,12 +167,8 @@ async function loadAccountBalanceChart() {
     const userId = localStorage.getItem('userId') || 'dev-user-123';
     console.log('Loading chart data for user:', userId);
     
-    const response = await fetch(`${API_CONFIG.getBaseUrl()}/analytics/account-balance?months=12`, {
-      method: 'GET',
-      headers: {
-        'X-User-ID': userId,
-        'Content-Type': 'application/json'
-      }
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/analytics/account-balance?months=12`, {
+      method: 'GET'
     });
     
     if (!response.ok) {
