@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>All Accounts - Panduhz Financial Tracker</title>
   <link rel="stylesheet" href="accounts.css">
-                <script>
+                                                                    <script>
   window.REACT_APP_API_URL = 'http://localhost:7071/api';
   window.REACT_APP_ENVIRONMENT = 'development';
   window.REACT_APP_DEBUG = true;
@@ -76,6 +76,24 @@
     </div>
   </div>
 
+  <!-- Delete Account Confirmation Modal -->
+  <div id="deleteAccountModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Delete Account</h2>
+        <span class="close" onclick="closeDeleteAccountModal()">&times;</span>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to delete the account <strong id="deleteAccountName"></strong>?</p>
+        <p class="warning-text">This action cannot be undone. The account will be marked as inactive and will no longer appear in your account list.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeDeleteAccountModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="deleteAccount()">Delete Account</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Loading overlay -->
   <div id="loadingOverlay" class="loading-overlay" style="display: none;">
     <div class="loading-spinner"></div>
@@ -84,6 +102,7 @@
 
   <!-- Include the MSAL.js library -->
   <script src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
+  
   <script src="auth.js"></script>
   <script src="accounts.js"></script>
 </body>

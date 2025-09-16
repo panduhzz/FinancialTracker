@@ -95,6 +95,8 @@ async function initializePage() {
         email: account.idTokenClaims.emails[0]
       };
       
+      // console.log('Current user initialized:', currentUser);
+      
       // Update UI with user info
       document.getElementById('userName').textContent = `Welcome, ${currentUser.name}!`;
       
@@ -102,7 +104,7 @@ async function initializePage() {
       await loadUserData();
       
       // Test account summary for debugging
-      await testAccountSummary();
+      // await testAccountSummary();
     } else {
       // Redirect to login if not authenticated
       window.location.replace('/index.html');
@@ -127,6 +129,11 @@ async function loadUserData() {
     updateFinancialSummary();
     displayAccounts();
     
+    // Load account charts in the background (optional)
+    // setTimeout(() => {
+    //   loadAllAccountCharts();
+    // }, 1000);
+    
   } catch (error) {
     console.error('Error loading user data:', error);
     showMessage('Error loading data. Please try again.', 'error');
@@ -137,12 +144,8 @@ async function loadUserData() {
 
 async function loadFinancialSummary() {
   try {
-    const response = await fetch(`${API_CONFIG.getBaseUrl()}/financial-summary`, {
-      method: 'GET',
-      headers: {
-        'X-User-ID': currentUser.id,
-        'Content-Type': 'application/json'
-      }
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/financial-summary`, {
+      method: 'GET'
     });
     
     if (response.ok) {
@@ -159,16 +162,13 @@ async function loadFinancialSummary() {
 
 async function loadUserAccounts() {
   try {
-    const response = await fetch(`${API_CONFIG.getBaseUrl()}/accounts`, {
-      method: 'GET',
-      headers: {
-        'X-User-ID': currentUser.id,
-        'Content-Type': 'application/json'
-      }
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/accounts`, {
+      method: 'GET'
     });
     
     if (response.ok) {
       userAccounts = await response.json();
+      console.log('Loaded accounts:', userAccounts);
     } else {
       console.log('No accounts found or error loading accounts');
       userAccounts = [];
@@ -198,6 +198,7 @@ function updateFinancialSummary() {
 
 function displayAccounts() {
   const container = document.getElementById('accountsList');
+  // console.log('Displaying accounts:', userAccounts);
   
   if (userAccounts.length === 0) {
     container.innerHTML = `
@@ -231,11 +232,16 @@ function displayAccounts() {
             <span class="icon">${isExpanded ? '▼' : '▶'}</span>
             ${isExpanded ? 'Hide' : 'View'} Summary
           </button>
+          <button class="btn btn-small btn-danger" onclick="confirmDeleteAccount('${account.account_id}', '${account.account_name}')">
+            <span class="icon">🗑️</span>
+            Delete
+          </button>
         </div>
         
         <div id="summary-${account.account_id}" class="account-summary ${isExpanded ? 'show' : ''}">
           <div class="loading-placeholder">Loading summary...</div>
         </div>
+        
       </div>
     `;
   }).join('');
@@ -270,12 +276,8 @@ async function toggleAccountSummary(accountId) {
 
 async function loadAccountSummary(accountId) {
   try {
-    const response = await fetch(`${API_CONFIG.getBaseUrl()}/accounts/summary/${accountId}`, {
-      method: 'GET',
-      headers: {
-        'X-User-ID': currentUser.id,
-        'Content-Type': 'application/json'
-      }
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/accounts/summary/${accountId}`, {
+      method: 'GET'
     });
     
     if (response.ok) {
@@ -325,7 +327,12 @@ function displayAccountSummary(accountId, summary) {
               <div class="transaction-description">${transaction.description}</div>
               <div class="transaction-details">${transaction.category} • ${new Date(transaction.transaction_date).toLocaleDateString()}</div>
             </div>
-            <div class="transaction-amount ${amountClass}">${amountDisplay}</div>
+            <div class="transaction-actions">
+              <div class="transaction-amount ${amountClass}">${amountDisplay}</div>
+              <button class="btn btn-small btn-danger" onclick="confirmDeleteTransaction('${transaction.RowKey}', '${transaction.description}', '${accountId}')" title="Delete transaction">
+                <span class="icon">🗑️</span>
+              </button>
+            </div>
           </div>
         `;
       }).join('')
@@ -390,6 +397,7 @@ function updateAccountButton(accountId) {
 
 // Navigation Functions
 function goBack() {
+  // console.log('goBack() function called');
   window.location.href = '/financialTracking.html';
 }
 
@@ -412,12 +420,8 @@ function handleSignOut() {
 async function testAccountSummary() {
   try {
     console.log('Testing account summary...');
-    const response = await fetch(`${API_CONFIG.getBaseUrl()}/test-account-summary`, {
-      method: 'GET',
-      headers: {
-        'X-User-ID': currentUser.id,
-        'Content-Type': 'application/json'
-      }
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/test-account-summary`, {
+      method: 'GET'
     });
     
     if (response.ok) {
@@ -470,3 +474,112 @@ window.onclick = function(event) {
 function closeAccountSummaryModal() {
   document.getElementById('accountSummaryModal').style.display = 'none';
 }
+
+// Transaction deletion functions
+function confirmDeleteTransaction(transactionId, description, accountId) {
+  const confirmed = confirm(`Are you sure you want to delete this transaction?\n\nDescription: ${description}\n\nThis action cannot be undone and will update your account balance.`);
+  
+  if (confirmed) {
+    deleteTransaction(transactionId, accountId);
+  }
+}
+
+async function deleteTransaction(transactionId, accountId) {
+  try {
+    showLoading(true);
+    
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/transactions/${transactionId}`, {
+      method: 'DELETE'
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      showMessage('Transaction deleted successfully!', 'success');
+      
+      // Store which accounts were expanded before refreshing
+      const expandedAccountIds = Array.from(expandedAccounts);
+      
+      // Reload the account list to update individual account balances
+      await loadUserAccounts();
+      
+      // Also reload the financial summary to update totals
+      await loadFinancialSummary();
+      updateFinancialSummary();
+      
+      // Redisplay the accounts with updated balances
+      displayAccounts();
+      
+      // Reload summaries for all previously expanded accounts
+      for (const expandedAccountId of expandedAccountIds) {
+        await loadAccountSummary(expandedAccountId);
+      }
+      
+    } else {
+      const errorData = await response.json();
+      showMessage(`Error deleting transaction: ${errorData.error || 'Unknown error'}`, 'error');
+    }
+  } catch (error) {
+    console.error('Error deleting transaction:', error);
+    showMessage('Network error while deleting transaction. Please try again.', 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+// Account deletion functionality
+let accountToDelete = null;
+
+function confirmDeleteAccount(accountId, accountName) {
+  accountToDelete = accountId;
+  document.getElementById('deleteAccountName').textContent = accountName;
+  document.getElementById('deleteAccountModal').style.display = 'block';
+}
+
+function closeDeleteAccountModal() {
+  document.getElementById('deleteAccountModal').style.display = 'none';
+  accountToDelete = null;
+}
+
+async function deleteAccount() {
+  if (!accountToDelete) {
+    showMessage('No account selected for deletion.', 'error');
+    return;
+  }
+
+  console.log('Deleting account:', accountToDelete);
+  showLoading(true);
+  
+  try {
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/accounts/${accountToDelete}`, {
+      method: 'DELETE'
+    });
+    
+    console.log('Delete response status:', response.status);
+    
+    if (response.ok) {
+      const result = await response.json();
+      console.log('Delete result:', result);
+      showMessage(result.message || 'Account deleted successfully!', 'success');
+      
+      // Close the modal
+      closeDeleteAccountModal();
+      
+      // Reload the accounts list
+      console.log('Reloading user data after deletion...');
+      await loadUserData();
+      console.log('User accounts after reload:', userAccounts);
+      displayAccounts();
+      updateFinancialSummary();
+    } else {
+      const errorData = await response.json();
+      console.error('Delete failed:', errorData);
+      showMessage(errorData.error || 'Failed to delete account.', 'error');
+    }
+  } catch (error) {
+    console.error('Error deleting account:', error);
+    showMessage('Network error while deleting account. Please try again.', 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+

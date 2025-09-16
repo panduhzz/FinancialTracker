@@ -1,14 +1,27 @@
+// Update scripts/build-local.js
 const fs = require('fs');
 const path = require('path');
 
-// Load environment variables from .env.development
+// Load environment variables from .env.development for local, or use GitHub secrets for production
 require('dotenv').config({ path: '.env.development' });
 
-// Fallback values for local development
-const defaultEnv = {
-  REACT_APP_API_URL: 'http://localhost:7071/api',
-  REACT_APP_ENVIRONMENT: 'development',
-  REACT_APP_DEBUG: 'true'
+// Environment-specific configuration
+const getEnvironmentConfig = () => {
+  const environment = process.env.REACT_APP_ENVIRONMENT || 'development';
+  
+  if (environment === 'production') {
+    return {
+      REACT_APP_API_URL: process.env.REACT_APP_API_URL, // No hardcoded fallback
+      REACT_APP_ENVIRONMENT: 'production',
+      REACT_APP_DEBUG: 'false'
+    };
+  } else {
+    return {
+      REACT_APP_API_URL: process.env.REACT_APP_API_URL || 'http://localhost:7071/api', // Only local fallback
+      REACT_APP_ENVIRONMENT: 'development',
+      REACT_APP_DEBUG: 'true'
+    };
+  }
 };
 
 function injectEnvironmentVariables() {
@@ -19,6 +32,13 @@ function injectEnvironmentVariables() {
     'src/accounts.html'
   ];
 
+  const config = getEnvironmentConfig();
+
+  // Validate that production has required environment variables
+  if (config.REACT_APP_ENVIRONMENT === 'production' && !config.REACT_APP_API_URL) {
+    throw new Error('REACT_APP_API_URL is required for production builds');
+  }
+
   htmlFiles.forEach(file => {
     if (fs.existsSync(file)) {
       let content = fs.readFileSync(file, 'utf8');
@@ -26,11 +46,11 @@ function injectEnvironmentVariables() {
       // Remove existing environment injection
       content = content.replace(/<script>\s*window\.REACT_APP_[^<]*<\/script>\s*/g, '');
       
-      // Inject environment variables with fallbacks
+      // Inject environment variables
       const envScript = `<script>
-  window.REACT_APP_API_URL = '${process.env.REACT_APP_API_URL || defaultEnv.REACT_APP_API_URL}';
-  window.REACT_APP_ENVIRONMENT = '${process.env.REACT_APP_ENVIRONMENT || defaultEnv.REACT_APP_ENVIRONMENT}';
-  window.REACT_APP_DEBUG = ${process.env.REACT_APP_DEBUG || defaultEnv.REACT_APP_DEBUG};
+  window.REACT_APP_API_URL = '${config.REACT_APP_API_URL}';
+  window.REACT_APP_ENVIRONMENT = '${config.REACT_APP_ENVIRONMENT}';
+  window.REACT_APP_DEBUG = ${config.REACT_APP_DEBUG};
 </script>`;
       
       if (content.includes('</head>')) {
@@ -46,4 +66,4 @@ function injectEnvironmentVariables() {
 }
 
 injectEnvironmentVariables();
-console.log('🚀 Local build complete! Environment variables injected.');
+console.log('🚀 Build complete! Environment variables injected.');

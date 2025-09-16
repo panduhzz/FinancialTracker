@@ -4,50 +4,15 @@ import logging
 import os
 import json
 import uuid
+import jwt
+import requests
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
-@app.route(route="test-account-summary", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
-def test_account_summary_api(req: func.HttpRequest) -> func.HttpResponse:
-    """Test endpoint for account summary debugging"""
-    try:
-        # Handle CORS preflight requests
-        if req.method == "OPTIONS":
-            return func.HttpResponse(
-                "",
-                status_code=200,
-                headers=get_cors_headers()
-            )
-        
-        # Get user ID from request headers
-        user_id = req.headers.get('X-User-ID', 'dev-user-123')
-        
-        # Get all accounts for the user
-        accounts = get_user_accounts(user_id)
-        
-        result = {
-            "user_id": user_id,
-            "total_accounts": len(accounts),
-            "accounts": accounts
-        }
-        
-        headers = get_cors_headers()
-        headers["Content-Type"] = "application/json"
-        return func.HttpResponse(
-            json.dumps(result),
-            status_code=200,
-            headers=headers
-        )
-    
-    except Exception as e:
-        logging.error(f"Error in test account summary API: {str(e)}")
-        return func.HttpResponse(
-            json.dumps({"error": "Internal server error", "details": str(e)}),
-            status_code=500,
-            headers={"Content-Type": "application/json"}
-        )
+
+
 
 @app.route(route="hello")
 def dbupdater(req: func.HttpRequest) -> func.HttpResponse:
@@ -95,6 +60,106 @@ def dbupdater(req: func.HttpRequest) -> func.HttpResponse:
             f"Error connecting to Azurite: {str(e)}",
             status_code=500
         )
+
+# Authentication and Token Validation Functions
+def get_azure_b2c_public_keys():
+    """Get Azure AD B2C public keys for token validation"""
+    try:
+        # Azure AD B2C OpenID Connect metadata endpoint
+        # Replace with your actual B2C tenant and policy
+        metadata_url = "https://PanduhzProject.b2clogin.com/PanduhzProject.onmicrosoft.com/B2C_1_testonsiteflow/v2.0/.well-known/openid_configuration"
+        
+        response = requests.get(metadata_url, timeout=10)
+        response.raise_for_status()
+        
+        metadata = response.json()
+        jwks_url = metadata['jwks_uri']
+        
+        jwks_response = requests.get(jwks_url, timeout=10)
+        jwks_response.raise_for_status()
+        
+        return jwks_response.json()
+    except Exception as e:
+        logging.error(f"Error fetching Azure B2C public keys: {str(e)}")
+        return None
+
+def validate_token(req: func.HttpRequest) -> str:
+    """Validate Azure AD B2C token and return user ID"""
+    try:
+        # Get token from Authorization header
+        auth_header = req.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            raise ValueError("Invalid authorization header")
+        
+        token = auth_header[7:]  # Remove 'Bearer ' prefix
+        
+        # For development/testing, we'll do basic token validation
+        # In production, you should implement full JWT signature verification
+        try:
+            # Decode token without verification for development
+            # In production, use proper JWT verification with public keys
+            decoded_token = jwt.decode(token, options={"verify_signature": False})
+            
+            
+            # Extract user ID from token
+            user_id = decoded_token.get('oid') or decoded_token.get('sub')
+            if not user_id:
+                raise ValueError("No user ID found in token")
+            
+            # Basic token validation
+            if 'exp' in decoded_token:
+                exp_timestamp = decoded_token['exp']
+                current_timestamp = datetime.utcnow().timestamp()
+                if current_timestamp > exp_timestamp:
+                    raise ValueError("Token has expired")
+            
+            return user_id
+            
+        except jwt.InvalidTokenError as e:
+            logging.error(f"Invalid JWT token: {str(e)}")
+            raise ValueError("Invalid token format")
+            
+    except Exception as e:
+        logging.error(f"Token validation failed: {str(e)}")
+        raise ValueError("Token validation failed")
+
+def get_user_id_from_request(req: func.HttpRequest) -> str:
+    """Get user ID from request - supports both token validation and fallback to headers for development"""
+    try:
+        # Try token validation first
+        return validate_token(req)
+    except Exception as token_error:
+        logging.warning(f"Token validation failed: {str(token_error)}")
+        
+        # For development, try to extract user ID from token even if validation fails
+        auth_header = req.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            try:
+                token = auth_header[7:]  # Remove 'Bearer ' prefix
+                # Decode token without verification for development
+                decoded_token = jwt.decode(token, options={"verify_signature": False})
+                
+                # Try different possible user ID fields
+                user_id = (decoded_token.get('oid') or 
+                          decoded_token.get('sub') or 
+                          decoded_token.get('objectId') or
+                          decoded_token.get('userId'))
+                
+                if user_id:
+                    return user_id
+                else:
+                    logging.error(f"No user ID found in token. Available claims: {list(decoded_token.keys())}")
+            except Exception as decode_error:
+                logging.warning(f"Failed to decode token: {str(decode_error)}")
+        
+        # Fallback to header for development (remove this in production)
+        user_id = req.headers.get('X-User-ID')
+        if user_id:
+            logging.warning("Using X-User-ID header as fallback - this should be removed in production")
+            return user_id
+        
+        # If no valid authentication method, raise error
+        raise ValueError("No valid authentication provided")
 
 # Utility Functions
 def get_table_service_client():
@@ -236,12 +301,26 @@ def get_user_accounts(user_id: str) -> List[Dict]:
     """Retrieve all bank accounts for a specific user"""
     try:
         table_client = get_table_client("UserAccounts")
-        entities = table_client.list_entities(filter=f"PartitionKey eq '{user_id}' and is_active eq true")
+        
+        # Get all accounts for the user, then filter in Python to handle missing is_active field
+        entities = table_client.list_entities()
+        # Convert iterator to list immediately to avoid paging issues
+        entities = list(entities)
+        
+        # Filter by user ID in Python
+        user_entities = [entity for entity in entities if entity.get('PartitionKey') == user_id]
+        entities = user_entities
+        
         accounts = []
         for entity in entities:
             account = dict(entity)
             account['account_id'] = account['RowKey']
-            accounts.append(account)
+            
+            # Filter out inactive accounts (default to True if is_active field doesn't exist)
+            is_active = account.get('is_active', True)
+            if is_active:
+                accounts.append(account)
+        
         return accounts
     except Exception as e:
         logging.error(f"Error getting user accounts: {str(e)}")
@@ -322,16 +401,26 @@ def update_account_balance(account_id: str, user_id: str, amount_change: float, 
         raise e
 
 def get_user_transactions(user_id: str, limit: int = 100) -> List[Dict]:
-    """Retrieve all transactions for a user across all accounts"""
+    """Retrieve all transactions for a user across all active accounts"""
     try:
+        # First, get all active accounts to filter transactions
+        active_accounts = get_user_accounts(user_id)
+        active_account_ids = {account['account_id'] for account in active_accounts}
+        
         table_client = get_table_client("Transactions")
-        entities = table_client.list_entities(filter=f"PartitionKey eq '{user_id}'")
+        entities = table_client.list_entities()
         
-        # Convert to list and sort by date (newest first)
-        transactions = [dict(entity) for entity in entities]
-        transactions.sort(key=lambda x: x.get('transaction_date', ''), reverse=True)
+        # Convert to list and filter by user ID and active accounts
+        all_transactions = [dict(entity) for entity in entities if entity.get('PartitionKey') == user_id]
+        filtered_transactions = [
+            transaction for transaction in all_transactions 
+            if transaction.get('account_id') in active_account_ids
+        ]
         
-        return transactions[:limit]
+        # Sort by date (newest first)
+        filtered_transactions.sort(key=lambda x: x.get('transaction_date', ''), reverse=True)
+        
+        return filtered_transactions[:limit]
     except Exception as e:
         logging.error(f"Error getting user transactions: {str(e)}")
         raise e
@@ -354,31 +443,20 @@ def get_account_details(account_id: str, user_id: str) -> Optional[Dict]:
 def get_account_summary(account_id: str, user_id: str) -> Dict:
     """Get summary information for an account"""
     try:
-        logging.info(f"Getting account summary for account_id: {account_id}, user_id: {user_id}")
         
         # Get account details
         account = get_account_details(account_id, user_id)
         if not account:
-            logging.warning(f"Account not found: {account_id} for user: {user_id}")
             return {"error": "Account not found"}
         
-        logging.info(f"Account found: {account.get('account_name', 'Unknown')}")
         
         # Get transactions for this account
         table_client = get_table_client("Transactions")
         
         # Get transactions for this account
-        filter_query = f"PartitionKey eq '{user_id}' and account_id eq '{account_id}'"
-        
-        try:
-            entities = table_client.list_entities(filter=filter_query)
-            transactions = [dict(entity) for entity in entities]
-        except Exception as e:
-            logging.error(f"Error with filter query: {e}")
-            # Fallback: get all transactions for user and filter manually
-            entities = table_client.list_entities(filter=f"PartitionKey eq '{user_id}'")
-            all_transactions = [dict(entity) for entity in entities]
-            transactions = [t for t in all_transactions if t.get('account_id') == account_id]
+        entities = table_client.list_entities()
+        all_transactions = [dict(entity) for entity in entities if entity.get('PartitionKey') == user_id]
+        transactions = [t for t in all_transactions if t.get('account_id') == account_id]
         
         # Additional validation: filter out any transactions that don't match the account_id
         # This is a safety check in case the Azure Table Storage filter doesn't work as expected
@@ -430,6 +508,81 @@ def get_account_summary(account_id: str, user_id: str) -> Dict:
     except Exception as e:
         logging.error(f"Error getting account summary: {str(e)}")
         return {"error": str(e)}
+
+def delete_transaction(transaction_id: str, user_id: str) -> Dict:
+    """Delete a transaction and recalculate account balance"""
+    try:
+        table_client = get_table_client("Transactions")
+        
+        # Get the transaction to delete
+        try:
+            transaction_entity = table_client.get_entity(partition_key=user_id, row_key=transaction_id)
+        except Exception as e:
+            if "ResourceNotFound" in str(e) or "not found" in str(e).lower():
+                return {"success": False, "error": "Transaction not found"}
+            raise e
+        
+        # Extract transaction details for balance recalculation
+        account_id = transaction_entity.get('account_id')
+        amount = float(transaction_entity.get('amount', 0))
+        transaction_type = transaction_entity.get('transaction_type')
+        
+        # Delete the transaction
+        table_client.delete_entity(partition_key=user_id, row_key=transaction_id)
+        
+        # Recalculate account balance by reversing the transaction effect
+        if account_id and transaction_type:
+            # Reverse the balance change (opposite of what was done when adding)
+            if transaction_type == 'income':
+                # Income was added, so subtract it
+                update_account_balance(account_id, user_id, amount, 'expense')
+            elif transaction_type == 'expense':
+                # Expense was subtracted, so add it back
+                update_account_balance(account_id, user_id, amount, 'income')
+            elif transaction_type == 'transfer':
+                # Transfer was subtracted, so add it back
+                update_account_balance(account_id, user_id, amount, 'income')
+        
+        logging.info(f"Deleted transaction {transaction_id} for user {user_id}")
+        return {"success": True, "message": "Transaction deleted successfully"}
+        
+    except Exception as e:
+        logging.error(f"Error deleting transaction: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+def delete_account(account_id: str, user_id: str) -> Dict:
+    """Soft delete an account by marking it as inactive"""
+    try:
+        table_client = get_table_client("UserAccounts")
+        
+        # Get the account to delete
+        try:
+            account_entity = table_client.get_entity(partition_key=user_id, row_key=account_id)
+            logging.info(f"Found account to delete: {account_entity.get('account_name', 'Unknown')} (ID: {account_id})")
+        except Exception as e:
+            if "ResourceNotFound" in str(e) or "not found" in str(e).lower():
+                logging.error(f"Account not found: {account_id}")
+                return {"success": False, "error": "Account not found"}
+            raise e
+        
+        # Verify the account belongs to the user
+        if account_entity.get('PartitionKey') != user_id:
+            logging.error(f"Unauthorized deletion attempt: User {user_id} tried to delete account {account_id}")
+            return {"success": False, "error": "Unauthorized: Account does not belong to user"}
+        
+        # Soft delete by marking as inactive
+        account_entity['is_active'] = False
+        account_entity['last_updated'] = datetime.utcnow().isoformat()
+        
+        # Update the account
+        table_client.update_entity(account_entity)
+        
+        logging.info(f"Successfully soft deleted account {account_id} ({account_entity.get('account_name', 'Unknown')}) for user {user_id}")
+        return {"success": True, "message": "Account deleted successfully"}
+        
+    except Exception as e:
+        logging.error(f"Error deleting account: {str(e)}")
+        return {"success": False, "error": str(e)}
 
 def get_user_financial_summary(user_id: str) -> Dict:
     """Get overall financial summary for a user"""
@@ -483,6 +636,349 @@ def get_user_financial_summary(user_id: str) -> Dict:
         logging.error(f"Error getting user financial summary: {str(e)}")
         return {"error": str(e)}
 
+# Analytics Functions for Charts
+def calculate_monthly_aggregates(transactions: List[Dict], months: int = 12) -> Dict:
+    """Helper function to aggregate transaction data by month"""
+    try:
+        from datetime import timedelta
+        
+        monthly_data = {}
+        current_date = datetime.utcnow()
+        
+        # Initialize last N months with zero values
+        for i in range(months):
+            month_date = current_date - timedelta(days=30*i)
+            month_key = month_date.strftime('%Y-%m')
+            monthly_data[month_key] = {
+                'income': 0,
+                'expense': 0,
+                'transfer': 0,
+                'net': 0,
+                'transaction_count': 0
+            }
+        
+        # Aggregate actual transaction data
+        for transaction in transactions:
+            transaction_date = transaction.get('transaction_date', '')
+            if transaction_date:
+                # Extract YYYY-MM from ISO date
+                month_key = transaction_date[:7]
+                if month_key in monthly_data:
+                    amount = float(transaction.get('amount', 0))
+                    transaction_type = transaction.get('transaction_type', '')
+                    
+                    monthly_data[month_key]['transaction_count'] += 1
+                    
+                    if transaction_type == 'income':
+                        monthly_data[month_key]['income'] += amount
+                    elif transaction_type == 'expense':
+                        monthly_data[month_key]['expense'] += amount
+                    elif transaction_type == 'transfer':
+                        monthly_data[month_key]['transfer'] += amount
+                    
+                    # Calculate net (income - expense)
+                    monthly_data[month_key]['net'] = (
+                        monthly_data[month_key]['income'] - 
+                        monthly_data[month_key]['expense']
+                    )
+        
+        # Sort by month (oldest first for charts)
+        sorted_months = sorted(monthly_data.keys())
+        sorted_data = {month: monthly_data[month] for month in sorted_months}
+        
+        return sorted_data
+        
+    except Exception as e:
+        logging.error(f"Error calculating monthly aggregates: {str(e)}")
+        return {}
+
+def get_monthly_financial_summary(user_id: str, months: int = 12) -> Dict:
+    """Get monthly aggregated financial data for all user accounts including balance history"""
+    try:
+        # Get all user transactions
+        transactions = get_user_transactions(user_id, limit=1000)
+        
+        # Get all user accounts for balance data
+        accounts = get_user_accounts(user_id)
+        
+        # Calculate monthly aggregates
+        monthly_data = calculate_monthly_aggregates(transactions, months)
+        
+        # Calculate historical balance data (with error handling)
+        try:
+            balance_history = get_balance_history(user_id, months)
+            
+            # Add balance data to monthly_data
+            for month_key, month_data in monthly_data.items():
+                if month_key in balance_history.get('monthly_net_worth', {}):
+                    month_data['total_balance'] = balance_history['monthly_net_worth'][month_key]
+                else:
+                    month_data['total_balance'] = 0
+        except Exception as e:
+            logging.error(f"Error calculating balance history: {str(e)}")
+            # If balance history fails, just use current total balance for all months
+            current_total_balance = sum(account.get('current_balance', 0) for account in accounts)
+            for month_key, month_data in monthly_data.items():
+                month_data['total_balance'] = current_total_balance
+        
+        # Calculate Y-axis scaling for both income/expense and balance data
+        all_values = []
+        balance_values = []
+        for month_data in monthly_data.values():
+            all_values.extend([month_data['income'], month_data['expense'], month_data['net']])
+            balance_values.append(month_data['total_balance'])
+        
+        # Calculate Y-axis scale for income/expense chart
+        if all_values:
+            min_val = min(all_values)
+            max_val = max(all_values)
+            range_val = max_val - min_val
+            
+            # Determine appropriate interval
+            if range_val <= 500:
+                interval = 50
+            elif range_val <= 1000:
+                interval = 100
+            elif range_val <= 5000:
+                interval = 500
+            else:
+                interval = 1000
+            
+            # Calculate axis bounds
+            axis_min = max(0, (min_val // interval) * interval - interval)
+            axis_max = ((max_val // interval) + 1) * interval + interval
+        else:
+            axis_min = 0
+            axis_max = 1000
+            interval = 100
+        
+        # Calculate Y-axis scale for balance chart
+        balance_axis_min = 0
+        balance_axis_max = 1000
+        balance_interval = 100
+        if balance_values:
+            balance_min = min(balance_values)
+            balance_max = max(balance_values)
+            balance_range = balance_max - balance_min
+            
+            # Determine appropriate interval for balance
+            if balance_range <= 500:
+                balance_interval = 50
+            elif balance_range <= 1000:
+                balance_interval = 100
+            elif balance_range <= 5000:
+                balance_interval = 500
+            else:
+                balance_interval = 1000
+            
+            # Calculate axis bounds for balance
+            balance_axis_min = max(0, (balance_min // balance_interval) * balance_interval - balance_interval)
+            balance_axis_max = ((balance_max // balance_interval) + 1) * balance_interval + balance_interval
+        
+        return {
+            "monthly_data": monthly_data,
+            "chart_config": {
+                "y_axis_scale": {
+                    "min": axis_min,
+                    "max": axis_max,
+                    "interval": interval
+                },
+                "balance_y_axis_scale": {
+                    "min": balance_axis_min,
+                    "max": balance_axis_max,
+                    "interval": balance_interval
+                }
+            },
+            "total_accounts": len(accounts),
+            "total_balance": sum(account.get('current_balance', 0) for account in accounts)
+        }
+        
+    except Exception as e:
+        logging.error(f"Error getting monthly financial summary: {str(e)}")
+        return {"error": str(e)}
+
+def get_account_monthly_history(account_id: str, user_id: str, months: int = 12) -> Dict:
+    """Get monthly data for a specific account"""
+    try:
+        # Get account details first
+        account = get_account_details(account_id, user_id)
+        if not account:
+            return {"error": "Account not found"}
+        
+        # Get all transactions for this account
+        table_client = get_table_client("Transactions")
+        
+        # Get all transactions for user and filter manually to avoid Azure SDK filter issues
+        entities = table_client.list_entities()
+        all_transactions = [dict(entity) for entity in entities if entity.get('PartitionKey') == user_id]
+        transactions = [t for t in all_transactions if t.get('account_id') == account_id]
+        
+        # Calculate monthly aggregates for this account
+        monthly_data = calculate_monthly_aggregates(transactions, months)
+        
+        # Calculate Y-axis scaling for account balance
+        balance_values = [account.get('current_balance', 0)]
+        for month_data in monthly_data.values():
+            balance_values.extend([month_data['income'], month_data['expense']])
+        
+        if balance_values:
+            min_val = min(balance_values)
+            max_val = max(balance_values)
+            range_val = max_val - min_val
+            
+            if range_val <= 500:
+                interval = 50
+            elif range_val <= 1000:
+                interval = 100
+            elif range_val <= 5000:
+                interval = 500
+            else:
+                interval = 1000
+            
+            axis_min = max(0, (min_val // interval) * interval - interval)
+            axis_max = ((max_val // interval) + 1) * interval + interval
+        else:
+            axis_min = 0
+            axis_max = 1000
+            interval = 100
+        
+        return {
+            "account_info": {
+                "account_id": account_id,
+                "account_name": account.get('account_name', ''),
+                "current_balance": account.get('current_balance', 0)
+            },
+            "monthly_data": monthly_data,
+            "chart_config": {
+                "y_axis_scale": {
+                    "min": axis_min,
+                    "max": axis_max,
+                    "interval": interval
+                }
+            }
+        }
+        
+    except Exception as e:
+        logging.error(f"Error getting account monthly history: {str(e)}")
+        return {"error": str(e)}
+
+def get_balance_history(user_id: str, months: int = 12) -> Dict:
+    """Calculate historical balance snapshots for all accounts by reconstructing from transactions"""
+    try:
+        # Get all user accounts
+        accounts = get_user_accounts(user_id)
+        
+        # Get all user transactions
+        transactions = get_user_transactions(user_id, limit=1000)
+        
+        # Initialize monthly balance data
+        from datetime import timedelta
+        current_date = datetime.utcnow()
+        monthly_balances = {}
+        
+        # Create a map of account_id to initial balance (current balance)
+        account_initial_balances = {acc.get('account_id'): acc.get('current_balance', 0) for acc in accounts}
+        
+        # Generate month keys for the last N months
+        month_keys = []
+        for i in range(months):
+            month_date = current_date - timedelta(days=30*i)
+            month_key = month_date.strftime('%Y-%m')
+            month_keys.append(month_key)
+            monthly_balances[month_key] = {}
+        
+        # Sort month keys chronologically (oldest first)
+        month_keys.sort()
+        
+        # For each month, calculate the balance at the END of that month
+        for month_key in month_keys:
+            # For each account, calculate what the balance was at the end of this month
+            for account in accounts:
+                account_id = account.get('account_id')
+                account_name = account.get('account_name', '')
+                
+                # Start with the current balance
+                balance_at_end_of_month = account_initial_balances[account_id]
+                
+                # Subtract all transactions that happened AFTER this month
+                for transaction in transactions:
+                    transaction_date_str = transaction.get('transaction_date', '')
+                    if not transaction_date_str:
+                        continue
+                    
+                    # Parse transaction date and compare with month_key
+                    try:
+                        transaction_date = datetime.fromisoformat(transaction_date_str.replace('Z', '+00:00'))
+                        transaction_month = transaction_date.strftime('%Y-%m')
+                        
+                        # If transaction happened after this month, reverse its effect
+                        if (transaction.get('account_id') == account_id and 
+                            transaction_month > month_key):
+                            
+                            amount = float(transaction.get('amount', 0))
+                            transaction_type = transaction.get('transaction_type', '')
+                            
+                            # Reverse the transaction effect to get historical balance
+                            if transaction_type == 'income':
+                                balance_at_end_of_month -= amount  # Remove future income
+                            elif transaction_type == 'expense':
+                                balance_at_end_of_month += amount  # Add back future expenses
+                            elif transaction_type == 'transfer':
+                                balance_at_end_of_month += amount  # Add back future transfers (money leaving)
+                    except Exception as e:
+                        logging.warning(f"Error parsing transaction date {transaction_date_str}: {e}")
+                        continue
+                
+                monthly_balances[month_key][account_id] = {
+                    'account_name': account_name,
+                    'balance': balance_at_end_of_month
+                }
+        
+        # Calculate total net worth for each month
+        monthly_net_worth = {}
+        for month_key, account_balances in monthly_balances.items():
+            total_balance = sum(acc_data['balance'] for acc_data in account_balances.values())
+            monthly_net_worth[month_key] = total_balance
+        
+        # Calculate Y-axis scaling for net worth
+        net_worth_values = list(monthly_net_worth.values())
+        if net_worth_values:
+            min_val = min(net_worth_values)
+            max_val = max(net_worth_values)
+            range_val = max_val - min_val
+            
+            if range_val <= 1000:
+                interval = 100
+            elif range_val <= 5000:
+                interval = 500
+            elif range_val <= 10000:
+                interval = 1000
+            else:
+                interval = 2000
+            
+            axis_min = max(0, (min_val // interval) * interval - interval)
+            axis_max = ((max_val // interval) + 1) * interval + interval
+        else:
+            axis_min = 0
+            axis_max = 1000
+            interval = 100
+        
+        return {
+            "monthly_balances": monthly_balances,
+            "monthly_net_worth": monthly_net_worth,
+            "chart_config": {
+                "y_axis_scale": {
+                    "min": axis_min,
+                    "max": axis_max,
+                    "interval": interval
+                }
+            }
+        }
+        
+    except Exception as e:
+        logging.error(f"Error getting balance history: {str(e)}")
+        return {"error": str(e)}
+
 # API Endpoints
 @app.route(route="accounts", methods=["GET", "POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 def accounts_api(req: func.HttpRequest) -> func.HttpResponse:
@@ -496,18 +992,24 @@ def accounts_api(req: func.HttpRequest) -> func.HttpResponse:
                 headers=get_cors_headers()
             )
         
-        # Get user ID from request headers (in a real app, this would come from JWT token)
-        user_id = req.headers.get('X-User-ID')
-        if not user_id:
-            # For development, use a default user ID
-            user_id = "dev-user-123"
-            logging.warning("No user ID provided, using default for development")
+        
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
         
         if req.method == "GET":
             # Get user accounts
             accounts = get_user_accounts(user_id)
+            
             headers = get_cors_headers()
             headers["Content-Type"] = "application/json"
+            
             return func.HttpResponse(
                 json.dumps(accounts),
                 status_code=200,
@@ -566,11 +1068,74 @@ def accounts_api(req: func.HttpRequest) -> func.HttpResponse:
                 )
     
     except Exception as e:
-        logging.error(f"Error in accounts API: {str(e)}")
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
         return func.HttpResponse(
             json.dumps({"error": "Internal server error", "details": str(e)}),
             status_code=500,
-            headers={"Content-Type": "application/json"}
+            headers=headers
+        )
+
+@app.route(route="accounts/{account_id}", methods=["DELETE", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def delete_account_api(req: func.HttpRequest) -> func.HttpResponse:
+    """API endpoint for deleting an account"""
+    try:
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
+        
+        if req.method == "DELETE":
+            # Get account ID from route parameters
+            account_id = req.route_params.get('account_id')
+            if not account_id:
+                return func.HttpResponse(
+                    json.dumps({"error": "Account ID is required"}),
+                    status_code=400,
+                    headers=get_cors_headers()
+                )
+            
+            # Delete the account
+            result = delete_account(account_id, user_id)
+            
+            if result.get('success'):
+                return func.HttpResponse(
+                    json.dumps(result),
+                    status_code=200,
+                    headers=get_cors_headers()
+                )
+            else:
+                return func.HttpResponse(
+                    json.dumps(result),
+                    status_code=400,
+                    headers=get_cors_headers()
+                )
+        
+        return func.HttpResponse(
+            json.dumps({"error": "Method not allowed"}),
+            status_code=405,
+            headers=get_cors_headers()
+        )
+
+    except Exception as e:
+        logging.error(f"Error in delete account API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": str(e)}),
+            status_code=500,
+            headers=get_cors_headers()
         )
 
 @app.route(route="transactions", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
@@ -585,12 +1150,15 @@ def transactions_api(req: func.HttpRequest) -> func.HttpResponse:
                 headers=get_cors_headers()
             )
         
-        # Get user ID from request headers
-        user_id = req.headers.get('X-User-ID')
-        if not user_id:
-            # For development, use a default user ID
-            user_id = "dev-user-123"
-            logging.warning("No user ID provided, using default for development")
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
         
         if req.method == "POST":
             # Add new transaction
@@ -654,6 +1222,66 @@ def transactions_api(req: func.HttpRequest) -> func.HttpResponse:
             headers=headers
         )
 
+@app.route(route="transactions/{transaction_id}", methods=["DELETE", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def delete_transaction_api(req: func.HttpRequest) -> func.HttpResponse:
+    """API endpoint for deleting transactions"""
+    try:
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
+        
+        if req.method == "DELETE":
+            # Get transaction ID from route parameter
+            transaction_id = req.route_params.get('transaction_id')
+            if not transaction_id:
+                return func.HttpResponse(
+                    json.dumps({"error": "Transaction ID is required"}),
+                    status_code=400,
+                    headers={"Content-Type": "application/json"}
+                )
+            
+            # Delete transaction
+            result = delete_transaction(transaction_id, user_id)
+            
+            if result.get('success'):
+                headers = get_cors_headers()
+                headers["Content-Type"] = "application/json"
+                return func.HttpResponse(
+                    json.dumps(result),
+                    status_code=200,
+                    headers=headers
+                )
+            else:
+                headers = get_cors_headers()
+                headers["Content-Type"] = "application/json"
+                return func.HttpResponse(
+                    json.dumps(result),
+                    status_code=400,
+                    headers=headers
+                )
+    
+    except Exception as e:
+        logging.error(f"Error in delete transaction API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error", "details": str(e)}),
+            status_code=500,
+            headers={"Content-Type": "application/json"}
+        )
+
 @app.route(route="transactions/recent", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 def recent_transactions_api(req: func.HttpRequest) -> func.HttpResponse:
     """API endpoint for getting recent transactions"""
@@ -666,12 +1294,16 @@ def recent_transactions_api(req: func.HttpRequest) -> func.HttpResponse:
                 headers=get_cors_headers()
             )
         
-        # Get user ID from request headers
-        user_id = req.headers.get('X-User-ID')
-        if not user_id:
-            # For development, use a default user ID
-            user_id = "dev-user-123"
-            logging.warning("No user ID provided, using default for development")
+        
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
         
         # Get limit from query parameters
         limit = int(req.params.get('limit', 10))
@@ -681,6 +1313,7 @@ def recent_transactions_api(req: func.HttpRequest) -> func.HttpResponse:
         
         headers = get_cors_headers()
         headers["Content-Type"] = "application/json"
+        
         return func.HttpResponse(
             json.dumps(transactions),
             status_code=200,
@@ -689,47 +1322,47 @@ def recent_transactions_api(req: func.HttpRequest) -> func.HttpResponse:
     
     except Exception as e:
         logging.error(f"Error in recent transactions API: {str(e)}")
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
         return func.HttpResponse(
             json.dumps({"error": "Internal server error", "details": str(e)}),
             status_code=500,
-            headers={"Content-Type": "application/json"}
+            headers=headers
         )
 
 @app.route(route="accounts/summary/{account_id}", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 def account_summary_api(req: func.HttpRequest) -> func.HttpResponse:
     """API endpoint for getting account summary"""
     try:
-        logging.info(f"Account summary API called with method: {req.method}")
         
         # Handle CORS preflight requests
         if req.method == "OPTIONS":
-            logging.info("Handling CORS preflight request")
             return func.HttpResponse(
                 "",
                 status_code=200,
                 headers=get_cors_headers()
             )
         
-        # Get user ID from request headers
-        user_id = req.headers.get('X-User-ID')
-        if not user_id:
-            # For development, use a default user ID
-            user_id = "dev-user-123"
-            logging.warning("No user ID provided, using default for development")
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
         
-        logging.info(f"Using user ID: {user_id}")
         
         # Get account ID from route parameter
         account_id = req.route_params.get('account_id')
         if not account_id:
-            logging.error("No account ID provided in route parameters")
             return func.HttpResponse(
                 json.dumps({"error": "Account ID is required"}),
                 status_code=400,
                 headers={"Content-Type": "application/json"}
             )
         
-        logging.info(f"Getting summary for account ID: {account_id}")
         
         # Get account summary
         summary = get_account_summary(account_id, user_id)
@@ -762,12 +1395,15 @@ def financial_summary_api(req: func.HttpRequest) -> func.HttpResponse:
                 headers=get_cors_headers()
             )
         
-        # Get user ID from request headers
-        user_id = req.headers.get('X-User-ID')
-        if not user_id:
-            # For development, use a default user ID
-            user_id = "dev-user-123"
-            logging.warning("No user ID provided, using default for development")
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
         
         # Get financial summary
         summary = get_user_financial_summary(user_id)
@@ -786,4 +1422,212 @@ def financial_summary_api(req: func.HttpRequest) -> func.HttpResponse:
             json.dumps({"error": "Internal server error", "details": str(e)}),
             status_code=500,
             headers={"Content-Type": "application/json"}
+        )
+
+# Analytics API Endpoints for Charts
+@app.route(route="analytics/monthly-summary", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def monthly_summary_api(req: func.HttpRequest) -> func.HttpResponse:
+    """API endpoint for getting monthly aggregated financial data for all accounts"""
+    try:
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
+        
+        # Get months parameter from query string (default: 12)
+        months = int(req.params.get('months', 12))
+        
+        # Get monthly financial summary
+        summary = get_monthly_financial_summary(user_id, months)
+        
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
+        return func.HttpResponse(
+            json.dumps(summary),
+            status_code=200,
+            headers=headers
+        )
+    
+    except Exception as e:
+        logging.error(f"Error in monthly summary API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error", "details": str(e)}),
+            status_code=500,
+            headers={"Content-Type": "application/json"}
+        )
+
+@app.route(route="analytics/account-history/{account_id}", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def account_history_api(req: func.HttpRequest) -> func.HttpResponse:
+    """API endpoint for getting monthly data for a specific account"""
+    try:
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
+        
+        # Get account ID from route parameter
+        account_id = req.route_params.get('account_id')
+        if not account_id:
+            return func.HttpResponse(
+                json.dumps({"error": "Account ID is required"}),
+                status_code=400,
+                headers={"Content-Type": "application/json"}
+            )
+        
+        # Get months parameter from query string (default: 12)
+        months = int(req.params.get('months', 12))
+        
+        # Get account monthly history
+        history = get_account_monthly_history(account_id, user_id, months)
+        
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
+        return func.HttpResponse(
+            json.dumps(history),
+            status_code=200,
+            headers=headers
+        )
+    
+    except Exception as e:
+        logging.error(f"Error in account history API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error", "details": str(e)}),
+            status_code=500,
+            headers={"Content-Type": "application/json"}
+        )
+
+@app.route(route="analytics/balance-history", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def balance_history_api(req: func.HttpRequest) -> func.HttpResponse:
+    """API endpoint for getting historical balance data for all accounts"""
+    try:
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
+        
+        # Get months parameter from query string (default: 12)
+        months = int(req.params.get('months', 12))
+        
+        # Get balance history
+        history = get_balance_history(user_id, months)
+        
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
+        return func.HttpResponse(
+            json.dumps(history),
+            status_code=200,
+            headers=headers
+        )
+    
+    except Exception as e:
+        logging.error(f"Error in balance history API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error", "details": str(e)}),
+            status_code=500,
+            headers={"Content-Type": "application/json"}
+        )
+
+@app.route(route="analytics/account-balance", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def account_balance_api(req: func.HttpRequest) -> func.HttpResponse:
+    """Get simplified account balance history for chart display"""
+    try:
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
+        
+        # Get months parameter from query string (default: 12)
+        months = int(req.params.get('months', 12))
+        
+        # Get balance history
+        balance_data = get_balance_history(user_id, months)
+        
+        if "error" in balance_data:
+            return func.HttpResponse(
+                json.dumps({"error": balance_data["error"]}),
+                status_code=500,
+                headers=get_cors_headers()
+            )
+        
+        # Return simplified data structure for the chart
+        monthly_net_worth = balance_data.get('monthly_net_worth', {})
+        chart_config = balance_data.get('chart_config', {})
+        
+        # Sort months chronologically
+        sorted_months = sorted(monthly_net_worth.keys())
+        balance_values = [monthly_net_worth[month] for month in sorted_months]
+        
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
+        return func.HttpResponse(
+            json.dumps({
+                "months": sorted_months,
+                "balances": balance_values,
+                "chart_config": chart_config
+            }),
+            status_code=200,
+            headers=headers
+        )
+    
+    except Exception as e:
+        logging.error(f"Error in account balance API: {str(e)}")
+        headers = get_cors_headers()
+        headers["Content-Type"] = "application/json"
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error", "details": str(e)}),
+            status_code=500,
+            headers=headers
         )

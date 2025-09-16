@@ -277,6 +277,12 @@ body {
   color: #dc3545;
 }
 
+.transaction-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 /* Buttons */
 .btn {
   background: #667eea;
@@ -312,6 +318,15 @@ body {
 .btn-small {
   padding: 8px 15px;
   font-size: 0.85em;
+}
+
+.btn-danger {
+  background: #dc3545;
+}
+
+.btn-danger:hover {
+  background: #c82333;
+  box-shadow: 0 5px 15px rgba(220, 53, 69, 0.4);
 }
 
 .icon {
@@ -381,6 +396,24 @@ body {
 
 .modal-body {
   padding: 30px;
+}
+
+.modal-footer {
+  padding: 20px 30px;
+  border-top: 1px solid #eee;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.warning-text {
+  color: #dc3545;
+  font-size: 0.9em;
+  margin-top: 10px;
+  padding: 10px;
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  border-radius: 4px;
 }
 
 /* Loading Overlay */
