@@ -11,9 +11,6 @@ from typing import Dict, List, Optional, Tuple
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
-
-
-
 @app.route(route="hello")
 def dbupdater(req: func.HttpRequest) -> func.HttpResponse:
     try:
