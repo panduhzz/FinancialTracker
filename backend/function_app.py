@@ -159,6 +159,19 @@ def get_user_id_from_request(req: func.HttpRequest) -> str:
         raise ValueError("No valid authentication provided")
 
 # Utility Functions
+def handle_first_time_user_error(error_message: str, user_id: str, operation: str) -> bool:
+    """Check if error is due to first-time user (missing tables) and handle gracefully"""
+    error_lower = error_message.lower()
+    if any(phrase in error_lower for phrase in [
+        "table specified does not exist",
+        "not found",
+        "table not found",
+        "resource not found"
+    ]):
+        logging.info(f"First-time user detected for {operation}: {user_id}. Tables will be created automatically.")
+        return True
+    return False
+
 def get_table_service_client():
     """Get table service client using connection string from environment"""
     connection_string = os.environ.get("AZURITE_CONNECTION_STRING")
@@ -168,24 +181,32 @@ def get_table_service_client():
 
 def ensure_tables_exist():
     """Create all required tables if they don't exist"""
-    table_service_client = get_table_service_client()
-    tables_to_create = ["UserAccounts", "Transactions", "Categories"]
-    created_tables = []
-    
-    for table_name in tables_to_create:
-        try:
-            table_client = table_service_client.get_table_client(table_name)
-            table_client.create_table()
-            created_tables.append(table_name)
-            logging.info(f"Created table: {table_name}")
-        except Exception as e:
-            if "TableAlreadyExists" in str(e) or "already exists" in str(e).lower():
-                logging.info(f"Table already exists: {table_name}")
-            else:
-                logging.error(f"Error creating table {table_name}: {str(e)}")
-                raise e
-    
-    return created_tables
+    try:
+        table_service_client = get_table_service_client()
+        tables_to_create = ["UserAccounts", "Transactions", "Categories"]
+        created_tables = []
+        
+        for table_name in tables_to_create:
+            try:
+                table_client = table_service_client.get_table_client(table_name)
+                table_client.create_table()
+                created_tables.append(table_name)
+                logging.info(f"Created table: {table_name}")
+            except Exception as e:
+                if "TableAlreadyExists" in str(e) or "already exists" in str(e).lower():
+                    logging.info(f"Table already exists: {table_name}")
+                else:
+                    logging.error(f"Error creating table {table_name}: {str(e)}")
+                    # Don't raise the error, just log it and continue
+                    # This allows the application to continue even if table creation fails
+                    pass
+        
+        return created_tables
+    except Exception as e:
+        logging.error(f"Error in ensure_tables_exist: {str(e)}")
+        # Don't raise the error, just log it
+        # This allows the application to continue even if table service is unavailable
+        return []
 
 def get_table_client(table_name: str):
     """Get a table client for a specific table"""
@@ -297,6 +318,9 @@ def create_bank_account(user_id: str, account_name: str, account_type: str,
 def get_user_accounts(user_id: str) -> List[Dict]:
     """Retrieve all bank accounts for a specific user"""
     try:
+        # Ensure tables exist before trying to query them
+        ensure_tables_exist()
+        
         table_client = get_table_client("UserAccounts")
         
         # Get all accounts for the user, then filter in Python to handle missing is_active field
@@ -321,6 +345,9 @@ def get_user_accounts(user_id: str) -> List[Dict]:
         return accounts
     except Exception as e:
         logging.error(f"Error getting user accounts: {str(e)}")
+        # For first-time users, return empty list instead of raising error
+        if handle_first_time_user_error(str(e), user_id, "get_user_accounts"):
+            return []
         raise e
 
 def add_transaction(account_id: str, user_id: str, amount: float, description: str, 
@@ -400,6 +427,9 @@ def update_account_balance(account_id: str, user_id: str, amount_change: float, 
 def get_user_transactions(user_id: str, limit: int = 100) -> List[Dict]:
     """Retrieve all transactions for a user across all active accounts"""
     try:
+        # Ensure tables exist before trying to query them
+        ensure_tables_exist()
+        
         # First, get all active accounts to filter transactions
         active_accounts = get_user_accounts(user_id)
         active_account_ids = {account['account_id'] for account in active_accounts}
@@ -420,6 +450,9 @@ def get_user_transactions(user_id: str, limit: int = 100) -> List[Dict]:
         return filtered_transactions[:limit]
     except Exception as e:
         logging.error(f"Error getting user transactions: {str(e)}")
+        # For first-time users, return empty list instead of raising error
+        if handle_first_time_user_error(str(e), user_id, "get_user_transactions"):
+            return []
         raise e
 
 def get_account_details(account_id: str, user_id: str) -> Optional[Dict]:
@@ -584,6 +617,9 @@ def delete_account(account_id: str, user_id: str) -> Dict:
 def get_user_financial_summary(user_id: str) -> Dict:
     """Get overall financial summary for a user"""
     try:
+        # Ensure tables exist before trying to query them
+        ensure_tables_exist()
+        
         # Get all user accounts
         accounts = get_user_accounts(user_id)
         
@@ -692,6 +728,9 @@ def calculate_monthly_aggregates(transactions: List[Dict], months: int = 12) -> 
 def get_monthly_financial_summary(user_id: str, months: int = 12) -> Dict:
     """Get monthly aggregated financial data for all user accounts including balance history"""
     try:
+        # Ensure tables exist before trying to query them
+        ensure_tables_exist()
+        
         # Get all user transactions
         transactions = get_user_transactions(user_id, limit=1000)
         
@@ -862,6 +901,9 @@ def get_account_monthly_history(account_id: str, user_id: str, months: int = 12)
 def get_balance_history(user_id: str, months: int = 12) -> Dict:
     """Calculate historical balance snapshots for all accounts by reconstructing from transactions"""
     try:
+        # Ensure tables exist before trying to query them
+        ensure_tables_exist()
+        
         # Get all user accounts
         accounts = get_user_accounts(user_id)
         
