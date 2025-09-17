@@ -6,5 +6,5 @@ azure-functions==1.18.0
 azure-data-tables==12.4.0
 six==1.16.0
 PyJWT==2.8.0
-cryptography==41.0.7
-requests==2.31.0
+cryptography>=43.0.1
+requests>=2.32.4
