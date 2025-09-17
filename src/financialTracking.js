@@ -252,6 +252,9 @@ function displayRecentTransactions() {
 function openCreateAccountModal() {
   document.getElementById('createAccountModal').style.display = 'block';
   document.getElementById('createAccountForm').reset();
+  
+  // Set default date to today
+  document.getElementById('accountCreationDate').value = new Date().toISOString().split('T')[0];
 }
 
 function closeCreateAccountModal() {
@@ -285,6 +288,7 @@ document.getElementById('createAccountForm').addEventListener('submit', async fu
     account_type: formData.get('accountType'),
     bank_name: formData.get('bankName') || '',
     initial_balance: parseFloat(formData.get('initialBalance')) || 0,
+    account_creation_date: formData.get('accountCreationDate') || new Date().toISOString().split('T')[0],
     description: formData.get('accountDescription') || ''
   };
   

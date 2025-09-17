@@ -230,6 +230,17 @@ def validate_account_data(account_data: Dict) -> Tuple[bool, List[str]]:
     except (ValueError, TypeError):
         errors.append("Initial balance must be a valid number")
     
+    # Validate account creation date if provided
+    account_creation_date = account_data.get('account_creation_date')
+    if account_creation_date:
+        try:
+            creation_date = datetime.fromisoformat(account_creation_date.replace('Z', '+00:00'))
+            # Check if date is in the future
+            if creation_date > datetime.utcnow():
+                errors.append("Account creation date cannot be in the future")
+        except (ValueError, TypeError):
+            errors.append("Invalid account creation date format")
+    
     return len(errors) == 0, errors
 
 def validate_transaction_data(transaction_data: Dict) -> Tuple[bool, List[str]]:
@@ -280,7 +291,7 @@ def get_cors_headers():
 # Banking Functions
 def create_bank_account(user_id: str, account_name: str, account_type: str, 
                        initial_balance: float = 0.0, bank_name: str = "", 
-                       description: str = "") -> Dict:
+                       description: str = "", account_creation_date: str = None) -> Dict:
     """Create a new bank account for a user"""
     try:
         # Ensure tables exist
@@ -288,6 +299,21 @@ def create_bank_account(user_id: str, account_name: str, account_type: str,
         
         # Generate unique account ID
         account_id = str(uuid.uuid4())
+        
+        # Handle account creation date
+        if account_creation_date:
+            try:
+                # Validate and parse the date
+                creation_date = datetime.fromisoformat(account_creation_date.replace('Z', '+00:00'))
+                # Ensure the date is not in the future
+                if creation_date > datetime.utcnow():
+                    creation_date = datetime.utcnow()
+                created_date_str = creation_date.isoformat()
+            except (ValueError, TypeError):
+                # If date parsing fails, use current time
+                created_date_str = datetime.utcnow().isoformat()
+        else:
+            created_date_str = datetime.utcnow().isoformat()
         
         # Create account entity
         account_entity = {
@@ -299,7 +325,7 @@ def create_bank_account(user_id: str, account_name: str, account_type: str,
             'current_balance': initial_balance,
             'bank_name': bank_name,
             'description': description,
-            'created_date': datetime.utcnow().isoformat(),
+            'created_date': created_date_str,
             'is_active': True,
             'last_updated': datetime.utcnow().isoformat()
         }
@@ -935,6 +961,26 @@ def get_balance_history(user_id: str, months: int = 12) -> Dict:
             for account in accounts:
                 account_id = account.get('account_id')
                 account_name = account.get('account_name', '')
+                account_created_date = account.get('created_date', '')
+                
+                # Check if account existed during this month
+                account_existed_this_month = True
+                if account_created_date:
+                    try:
+                        # Parse account creation date
+                        creation_date = datetime.fromisoformat(account_created_date.replace('Z', '+00:00'))
+                        creation_month = creation_date.strftime('%Y-%m')
+                        
+                        # If account was created after this month, it didn't exist yet
+                        if creation_month > month_key:
+                            account_existed_this_month = False
+                    except (ValueError, TypeError):
+                        # If we can't parse the date, assume account existed
+                        pass
+                
+                # If account didn't exist this month, skip it
+                if not account_existed_this_month:
+                    continue
                 
                 # Start with the current balance
                 balance_at_end_of_month = account_initial_balances[account_id]
@@ -1085,7 +1131,8 @@ def accounts_api(req: func.HttpRequest) -> func.HttpResponse:
                     account_type=account_data['account_type'],
                     initial_balance=float(account_data.get('initial_balance', 0)),
                     bank_name=account_data.get('bank_name', ''),
-                    description=account_data.get('description', '')
+                    description=account_data.get('description', ''),
+                    account_creation_date=account_data.get('account_creation_date')
                 )
                 
                 headers = get_cors_headers()

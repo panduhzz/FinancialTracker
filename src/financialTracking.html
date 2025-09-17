@@ -6,7 +6,7 @@
   <title>Financial Tracking - Panduhz</title>
   <link rel="stylesheet" href="financialTracking.css">
   <link rel="stylesheet" href="chart-styles.css">
-                                                                            <script>
+                                                                              <script>
   window.REACT_APP_API_URL = 'http://localhost:7071/api';
   window.REACT_APP_ENVIRONMENT = 'development';
   window.REACT_APP_DEBUG = true;
@@ -108,6 +108,11 @@
         <div class="form-group">
           <label for="initialBalance">Initial Balance</label>
           <input type="number" id="initialBalance" name="initialBalance" step="0.01" value="0.00" placeholder="0.00">
+        </div>
+        
+        <div class="form-group">
+          <label for="accountCreationDate">Account Creation Date</label>
+          <input type="date" id="accountCreationDate" name="accountCreationDate">
         </div>
         
         <div class="form-group">
