@@ -4,6 +4,26 @@ let userAccounts = [];
 let financialSummary = {};
 let expandedAccounts = new Set(); // Track which accounts have expanded summaries
 
+function formatTransactionDate(dateString) {
+  // Parse date string directly to avoid timezone conversion issues
+  if (!dateString) return 'Unknown Date';
+  
+  // If it's already in YYYY-MM-DD format, parse it directly
+  if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    const [year, month, day] = dateString.split('-');
+    return `${parseInt(month)}/${parseInt(day)}/${year}`;
+  }
+  
+  // Fallback to Date parsing for other formats
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString();
+  } catch (error) {
+    console.error('Error parsing date:', dateString, error);
+    return 'Invalid Date';
+  }
+}
+
 // API Configuration - uses build-time environment variables
 const API_CONFIG = {
   getBaseUrl: function() {
@@ -325,7 +345,7 @@ function displayAccountSummary(accountId, summary) {
           <div class="transaction-item">
             <div class="transaction-info">
               <div class="transaction-description">${transaction.description}</div>
-              <div class="transaction-details">${transaction.category} • ${new Date(transaction.transaction_date).toLocaleDateString()}</div>
+              <div class="transaction-details">${transaction.category} • ${formatTransactionDate(transaction.transaction_date)}</div>
             </div>
             <div class="transaction-actions">
               <div class="transaction-amount ${amountClass}">${amountDisplay}</div>
@@ -354,7 +374,7 @@ function displayAccountSummary(accountId, summary) {
       </div>
       <div class="summary-stat">
         <h4>Last Transaction</h4>
-        <p>${summary.last_transaction_date ? new Date(summary.last_transaction_date).toLocaleDateString() : 'None'}</p>
+        <p>${summary.last_transaction_date ? formatTransactionDate(summary.last_transaction_date) : 'None'}</p>
       </div>
     </div>
     

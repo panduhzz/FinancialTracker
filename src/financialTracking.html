@@ -6,7 +6,7 @@
   <title>Financial Tracking - Panduhz</title>
   <link rel="stylesheet" href="financialTracking.css">
   <link rel="stylesheet" href="chart-styles.css">
-                                                                              <script>
+                                                                                    <script>
   window.REACT_APP_API_URL = 'http://localhost:7071/api';
   window.REACT_APP_ENVIRONMENT = 'development';
   window.REACT_APP_DEBUG = true;
@@ -171,17 +171,37 @@
         
         <div class="form-group">
           <label for="transactionType">Transaction Type *</label>
-          <select id="transactionType" name="transactionType" required>
+          <select id="transactionType" name="transactionType" required onchange="toggleRecurringOptions()">
             <option value="">Select type</option>
             <option value="income">Income</option>
             <option value="expense">Expense</option>
             <option value="transfer">Transfer</option>
+            <option value="recurring_expense">Recurring Expense</option>
+            <option value="recurring_income">Recurring Income</option>
           </select>
         </div>
         
         <div class="form-group">
           <label for="transactionDate">Date</label>
           <input type="date" id="transactionDate" name="transactionDate">
+          <small id="dateNote" class="form-note" style="display: none; color: #666; font-size: 0.9em; margin-top: 5px;">
+            Date is automatically set based on subscription start date for recurring transactions
+          </small>
+        </div>
+        
+        <div id="recurringOptions" class="form-group" style="display: none;">
+          <label for="subscriptionStartDate">Subscription Start Date *</label>
+          <input type="date" id="subscriptionStartDate" name="subscriptionStartDate">
+          
+          <label for="frequency">Frequency *</label>
+          <select id="frequency" name="frequency">
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly</option>
+          </select>
+          
+          <div class="recurring-info">
+            <p><strong>Note:</strong> This will automatically create transactions for each month since the start date.</p>
+          </div>
         </div>
         
         <div class="modal-footer">

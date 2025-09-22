@@ -115,6 +115,19 @@ body {
     border-radius: 8px;
     background: #f8f9fa;
   }
+
+  .feature-item.clickable {
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+  }
+
+  .feature-item.clickable:hover {
+    background: #e9ecef;
+    border-color: #667eea;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+  }
   
   .feature-icon {
     width: 40px;

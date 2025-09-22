@@ -6,13 +6,14 @@ import json
 import uuid
 import jwt
 import requests
+import calendar
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
-@app.route(route="hello")
-def dbupdater(req: func.HttpRequest) -> func.HttpResponse:
+@app.route(route="test")
+def test(req: func.HttpRequest) -> func.HttpResponse:
     try:
         # Get connection string from environment variable
         connection_string = os.environ.get("AZURITE_CONNECTION_STRING")
@@ -261,6 +262,16 @@ def validate_transaction_data(transaction_data: Dict) -> Tuple[bool, List[str]]:
     elif transaction_data.get('transaction_type') not in ['income', 'expense', 'transfer']:
         errors.append("Invalid transaction type")
     
+    # Validate recurring transaction fields
+    is_recurring = transaction_data.get('is_recurring', False)
+    if is_recurring:
+        if not transaction_data.get('recurring_start_date'):
+            errors.append("Recurring start date is required for recurring transactions")
+        if not transaction_data.get('recurring_frequency'):
+            errors.append("Recurring frequency is required for recurring transactions")
+        elif transaction_data.get('recurring_frequency') not in ['monthly', 'yearly']:
+            errors.append("Invalid recurring frequency. Must be 'monthly' or 'yearly'")
+    
     try:
         amount = float(transaction_data.get('amount', 0))
     except (ValueError, TypeError):
@@ -377,7 +388,9 @@ def get_user_accounts(user_id: str) -> List[Dict]:
         raise e
 
 def add_transaction(account_id: str, user_id: str, amount: float, description: str, 
-                   category: str, transaction_type: str, date: Optional[str] = None) -> Dict:
+                   category: str, transaction_type: str, date: Optional[str] = None,
+                   is_recurring: bool = False, recurring_frequency: str = "monthly",
+                   recurring_start_date: Optional[str] = None) -> Dict:
     """Add a new transaction to an account"""
     try:
         # Ensure tables exist
@@ -390,6 +403,26 @@ def add_transaction(account_id: str, user_id: str, amount: float, description: s
         if not date:
             date = datetime.utcnow().isoformat()
         
+        # Ensure date is in proper format (YYYY-MM-DD) and avoid timezone issues
+        if date and 'T' not in date:
+            # If it's just a date string, ensure it's properly formatted
+            try:
+                # Parse and reformat to ensure consistency
+                parsed_date = datetime.strptime(date, '%Y-%m-%d')
+                # Store as date string without time to avoid timezone conversion
+                date = parsed_date.strftime('%Y-%m-%d')
+            except ValueError:
+                logging.error(f"Invalid date format: {date}")
+                date = datetime.utcnow().strftime('%Y-%m-%d')
+        elif date and 'T' in date:
+            # If it's an ISO datetime string, extract just the date part
+            try:
+                parsed_date = datetime.fromisoformat(date.replace('Z', '+00:00'))
+                date = parsed_date.strftime('%Y-%m-%d')
+            except ValueError:
+                logging.error(f"Invalid ISO date format: {date}")
+                date = datetime.utcnow().strftime('%Y-%m-%d')
+        
         # Create transaction entity
         transaction_entity = {
             'PartitionKey': user_id,
@@ -400,6 +433,9 @@ def add_transaction(account_id: str, user_id: str, amount: float, description: s
             'category': category,
             'transaction_type': transaction_type,
             'transaction_date': date,
+            'is_recurring': is_recurring,
+            'recurring_frequency': recurring_frequency if is_recurring else None,
+            'recurring_start_date': recurring_start_date if is_recurring else None,
             'created_date': datetime.utcnow().isoformat(),
             'last_updated': datetime.utcnow().isoformat()
         }
@@ -411,11 +447,118 @@ def add_transaction(account_id: str, user_id: str, amount: float, description: s
         # Update account balance (pass transaction type)
         update_account_balance(account_id, user_id, amount, transaction_type)
         
+        # If this is a recurring transaction, process historical transactions
+        if is_recurring and recurring_start_date:
+            try:
+                logging.info(f"Processing recurring transaction history for {transaction_id}")
+                process_recurring_transaction_history(
+                    account_id, user_id, amount, description, category, 
+                    transaction_type, recurring_start_date, recurring_frequency
+                )
+                logging.info(f"Successfully processed historical transactions for recurring transaction {transaction_id}")
+            except Exception as e:
+                logging.error(f"Error processing historical transactions for {transaction_id}: {str(e)}")
+                # Don't fail the main transaction if historical processing fails
+                # The main transaction was already created successfully
+        
         logging.info(f"Created transaction {transaction_id} for account {account_id}")
         return transaction_entity
         
     except Exception as e:
         logging.error(f"Error adding transaction: {str(e)}")
+        raise e
+
+def process_recurring_transaction_history(account_id: str, user_id: str, amount: float,
+                                        description: str, category: str, transaction_type: str,
+                                        start_date: str, frequency: str) -> List[Dict]:
+    """Create historical transactions for a recurring transaction"""
+    try:
+        # Parse start date - handle different date formats
+        if 'T' in start_date:
+            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        else:
+            # Handle YYYY-MM-DD format
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        
+        current_dt = datetime.utcnow()
+        
+        # Calculate months between start date and today
+        months_passed = (current_dt.year - start_dt.year) * 12 + (current_dt.month - start_dt.month)
+        
+        # Don't create historical transactions if start date is in the future
+        if months_passed < 0:
+            logging.info(f"No historical transactions needed - start date is in the future")
+            return []
+        
+        # If start date is in current month, don't create historical transactions
+        # because the main transaction will be created for this month
+        if months_passed == 0:
+            logging.info(f"Start date is in current month - no historical transactions needed")
+            return []
+        
+        created_transactions = []
+        table_client = get_table_client("Transactions")
+        
+        # Create individual transactions for each month
+        
+        # Create transactions for each month AFTER the start month
+        for i in range(1, months_passed + 1):
+            # Calculate the date for this month using a safer method
+            year = start_dt.year
+            month = start_dt.month + i
+            
+            # Handle year overflow
+            while month > 12:
+                month -= 12
+                year += 1
+            
+            # Create transaction date preserving the original day of the month
+            # Handle cases where the day doesn't exist in the target month (e.g., Jan 31 -> Feb 28/29)
+            try:
+                transaction_date = datetime(year, month, start_dt.day)
+            except ValueError:
+                # If the day doesn't exist in the target month, use the last day of the month
+                last_day = calendar.monthrange(year, month)[1]
+                transaction_date = datetime(year, month, last_day)
+            
+            # Skip if this would be in the future
+            # Allow current month if the day has already passed
+            if transaction_date > current_dt:
+                break
+            
+            # Generate unique transaction ID for historical transaction
+            historical_transaction_id = str(uuid.uuid4())
+            
+            # Create historical transaction entity
+            historical_transaction = {
+                'PartitionKey': user_id,
+                'RowKey': historical_transaction_id,
+                'account_id': account_id,
+                'amount': amount,
+                'description': description,
+                'category': category,
+                'transaction_type': transaction_type,
+                'transaction_date': transaction_date.isoformat(),
+                'is_recurring': True,
+                'recurring_frequency': frequency,
+                'recurring_start_date': start_date,
+                'created_date': datetime.utcnow().isoformat(),
+                'last_updated': datetime.utcnow().isoformat()
+            }
+            
+            # Save historical transaction
+            table_client.create_entity(historical_transaction)
+            
+            # Update account balance for this historical transaction
+            update_account_balance(account_id, user_id, amount, transaction_type)
+            
+            created_transactions.append(historical_transaction)
+        
+        logging.info(f"Created {len(created_transactions)} historical transactions for recurring transaction")
+        return created_transactions
+        
+    except Exception as e:
+        logging.error(f"Error processing recurring transaction history: {str(e)}")
         raise e
 
 def update_account_balance(account_id: str, user_id: str, amount_change: float, transaction_type: str):
@@ -1277,7 +1420,10 @@ def transactions_api(req: func.HttpRequest) -> func.HttpResponse:
                     description=transaction_data['description'],
                     category=transaction_data['category'],
                     transaction_type=transaction_data['transaction_type'],
-                    date=transaction_data.get('transaction_date')
+                    date=transaction_data.get('transaction_date'),
+                    is_recurring=transaction_data.get('is_recurring', False),
+                    recurring_frequency=transaction_data.get('recurring_frequency', 'monthly'),
+                    recurring_start_date=transaction_data.get('recurring_start_date')
                 )
                 
                 headers = get_cors_headers()
