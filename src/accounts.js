@@ -344,7 +344,10 @@ function displayAccountSummary(accountId, summary) {
         return `
           <div class="transaction-item">
             <div class="transaction-info">
-              <div class="transaction-description">${transaction.description}</div>
+              <div class="transaction-description">
+                ${transaction.description}
+                ${transaction.is_recurring ? '<span class="recurring-badge">Recurring</span>' : ''}
+              </div>
               <div class="transaction-details">${transaction.category} • ${formatTransactionDate(transaction.transaction_date)}</div>
             </div>
             <div class="transaction-actions">

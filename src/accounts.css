@@ -533,3 +533,43 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* Recurring Transaction Badge */
+.recurring-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  font-size: 0.7em;
+  padding: 3px 8px;
+  border-radius: 12px;
+  margin-left: 8px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+  transition: all 0.3s ease;
+}
+
+.recurring-badge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+}
+
+/* Alternative: Subtle badge style */
+.recurring-badge-subtle {
+  display: inline-block;
+  background: #e3f2fd;
+  color: #1976d2;
+  font-size: 0.7em;
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-left: 6px;
+  font-weight: 500;
+  border: 1px solid #bbdefb;
+}
+
+/* Recurring transaction item styling */
+.transaction-item.recurring-transaction {
+  border-left: 4px solid #667eea;
+  background: linear-gradient(90deg, rgba(102, 126, 234, 0.05), transparent);
+}
