@@ -210,6 +210,26 @@ function populateAccountSelect() {
   });
 }
 
+function formatTransactionDate(dateString) {
+  // Parse date string directly to avoid timezone conversion issues
+  if (!dateString) return 'Unknown Date';
+  
+  // If it's already in YYYY-MM-DD format, parse it directly
+  if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    const [year, month, day] = dateString.split('-');
+    return `${parseInt(month)}/${parseInt(day)}/${year}`;
+  }
+  
+  // Fallback to Date parsing for other formats
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString();
+  } catch (error) {
+    console.error('Error parsing date:', dateString, error);
+    return 'Invalid Date';
+  }
+}
+
 function displayRecentTransactions() {
   const container = document.getElementById('recentTransactions');
   
@@ -240,7 +260,7 @@ function displayRecentTransactions() {
       <div class="transaction-item">
         <div class="transaction-info">
           <div class="transaction-description">${transaction.description}</div>
-          <div class="transaction-details">${transaction.category} • ${new Date(transaction.transaction_date).toLocaleDateString()}</div>
+          <div class="transaction-details">${transaction.category} • ${formatTransactionDate(transaction.transaction_date)}</div>
         </div>
         <div class="transaction-amount ${amountClass}">${amountDisplay}</div>
       </div>
@@ -255,10 +275,16 @@ function openCreateAccountModal() {
   
   // Set default date to today
   document.getElementById('accountCreationDate').value = new Date().toISOString().split('T')[0];
+  
+  // Prevent background scrolling
+  document.body.style.overflow = 'hidden';
 }
 
 function closeCreateAccountModal() {
   document.getElementById('createAccountModal').style.display = 'none';
+  
+  // Restore background scrolling
+  document.body.style.overflow = 'auto';
 }
 
 function openAddTransactionModal() {
@@ -272,11 +298,72 @@ function openAddTransactionModal() {
   
   // Set default date to today
   document.getElementById('transactionDate').value = new Date().toISOString().split('T')[0];
+  
+  // Prevent background scrolling
+  document.body.style.overflow = 'hidden';
 }
 
 function closeAddTransactionModal() {
   document.getElementById('addTransactionModal').style.display = 'none';
+  
+  // Restore background scrolling
+  document.body.style.overflow = 'auto';
 }
+
+function toggleRecurringOptions() {
+  try {
+    const transactionType = document.getElementById('transactionType').value;
+    const recurringOptions = document.getElementById('recurringOptions');
+    
+    if (!recurringOptions) {
+      console.error('recurringOptions element not found');
+      return;
+    }
+    
+    if (transactionType === 'recurring_expense' || transactionType === 'recurring_income') {
+      recurringOptions.style.display = 'block';
+      
+      // Disable the regular date field for recurring transactions
+      const transactionDateInput = document.getElementById('transactionDate');
+      const dateNote = document.getElementById('dateNote');
+      if (transactionDateInput) {
+        transactionDateInput.disabled = true;
+        transactionDateInput.style.backgroundColor = '#f5f5f5';
+        transactionDateInput.style.color = '#999';
+      }
+      if (dateNote) {
+        dateNote.style.display = 'block';
+      }
+      
+      // Set default subscription start date to 1 month ago
+      const oneMonthAgo = new Date();
+      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+      const startDateInput = document.getElementById('subscriptionStartDate');
+      if (startDateInput) {
+        startDateInput.value = oneMonthAgo.toISOString().split('T')[0];
+      }
+    } else {
+      recurringOptions.style.display = 'none';
+      
+      // Re-enable the regular date field for non-recurring transactions
+      const transactionDateInput = document.getElementById('transactionDate');
+      const dateNote = document.getElementById('dateNote');
+      if (transactionDateInput) {
+        transactionDateInput.disabled = false;
+        transactionDateInput.style.backgroundColor = '';
+        transactionDateInput.style.color = '';
+      }
+      if (dateNote) {
+        dateNote.style.display = 'none';
+      }
+    }
+  } catch (error) {
+    console.error('Error in toggleRecurringOptions:', error);
+  }
+}
+
+// Make function globally available
+window.toggleRecurringOptions = toggleRecurringOptions;
 
 // Form Handlers
 document.getElementById('createAccountForm').addEventListener('submit', async function(e) {
@@ -324,13 +411,35 @@ document.getElementById('addTransactionForm').addEventListener('submit', async f
   e.preventDefault();
   
   const formData = new FormData(e.target);
+  const transactionType = formData.get('transactionType');
+  const isRecurring = transactionType === 'recurring_expense' || transactionType === 'recurring_income';
+  
+  // Convert recurring transaction types to base types
+  let baseTransactionType = transactionType;
+  if (transactionType === 'recurring_expense') {
+    baseTransactionType = 'expense';
+  } else if (transactionType === 'recurring_income') {
+    baseTransactionType = 'income';
+  }
+  
+  // For recurring transactions, use the subscription start date as the transaction date
+  let transactionDate;
+  if (isRecurring) {
+    transactionDate = formData.get('subscriptionStartDate');
+  } else {
+    transactionDate = formData.get('transactionDate') || new Date().toISOString().split('T')[0];
+  }
+  
   const transactionData = {
     account_id: formData.get('transactionAccount'),
     amount: parseFloat(formData.get('transactionAmount')),
     description: formData.get('transactionDescription'),
     category: formData.get('transactionCategory'),
-    transaction_type: formData.get('transactionType'),
-    transaction_date: formData.get('transactionDate') || new Date().toISOString().split('T')[0]
+    transaction_type: baseTransactionType,
+    transaction_date: transactionDate,
+    is_recurring: isRecurring,
+    recurring_frequency: isRecurring ? formData.get('frequency') : null,
+    recurring_start_date: isRecurring ? formData.get('subscriptionStartDate') : null
   };
   
   try {
@@ -355,7 +464,11 @@ document.getElementById('addTransactionForm').addEventListener('submit', async f
         }
       }
       
-      showMessage('Transaction added successfully!', 'success');
+      if (isRecurring) {
+        showMessage('Recurring transaction added successfully! Historical transactions have been created.', 'success');
+      } else {
+        showMessage('Transaction added successfully!', 'success');
+      }
       closeAddTransactionModal();
       updateDashboard();
       displayRecentTransactions();
