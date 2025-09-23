@@ -7,7 +7,7 @@ import uuid
 import jwt
 import requests
 import calendar
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
@@ -15,6 +15,14 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 @app.route(route="test")
 def test(req: func.HttpRequest) -> func.HttpResponse:
     try:
+        # Check if this is production environment
+        environment = os.environ.get("ENVIRONMENT", "development")
+        if environment.lower() == "production":
+            return func.HttpResponse(
+                "This endpoint is not available in production",
+                status_code=403
+            )
+        
         # Get connection string from environment variable
         connection_string = os.environ.get("AZURITE_CONNECTION_STRING")
         
@@ -1862,4 +1870,301 @@ def account_balance_api(req: func.HttpRequest) -> func.HttpResponse:
             json.dumps({"error": "Internal server error", "details": str(e)}),
             status_code=500,
             headers=headers
+        )
+
+# Scheduled Function for Recurring Transactions
+@app.timer_trigger(schedule="0 0 0 * * *", arg_name="timer", run_on_startup=False, use_monitor=False)
+def process_daily_recurring_transactions(timer: func.TimerRequest) -> None:
+    """Daily scheduled function to create recurring transactions that are due today"""
+    try:
+        logging.info("Starting daily recurring transaction processing")
+        
+        # Ensure tables exist
+        ensure_tables_exist()
+        
+        # Get today's date
+        today = datetime.utcnow().date()
+        today_str = today.strftime('%Y-%m-%d')
+        
+        logging.info(f"Processing recurring transactions for date: {today_str}")
+        
+        # Find all recurring transactions that should be created today
+        recurring_transactions_to_create = find_recurring_transactions_due_today(today)
+        
+        if not recurring_transactions_to_create:
+            logging.info("No recurring transactions due today")
+            return
+        
+        logging.info(f"Found {len(recurring_transactions_to_create)} recurring transactions due today")
+        
+        # Create the transactions
+        created_count = 0
+        failed_count = 0
+        
+        for recurring_config in recurring_transactions_to_create:
+            try:
+                success = create_recurring_transaction_for_date(recurring_config, today_str)
+                if success:
+                    created_count += 1
+                    logging.info(f"Created recurring transaction for user {recurring_config['user_id']}, account {recurring_config['account_id']}")
+                else:
+                    failed_count += 1
+                    logging.warning(f"Failed to create recurring transaction for user {recurring_config['user_id']}, account {recurring_config['account_id']}")
+            except Exception as e:
+                failed_count += 1
+                logging.error(f"Error creating recurring transaction for user {recurring_config['user_id']}: {str(e)}")
+        
+        logging.info(f"Daily recurring transaction processing completed. Created: {created_count}, Failed: {failed_count}")
+        
+    except Exception as e:
+        logging.error(f"Error in daily recurring transaction processing: {str(e)}")
+        raise e
+
+def find_recurring_transactions_due_today(today: datetime.date) -> List[Dict]:
+    """Find all recurring transactions that should be created today"""
+    try:
+        table_client = get_table_client("Transactions")
+        
+        # Get all transactions that are recurring
+        entities = table_client.list_entities()
+        all_transactions = [dict(entity) for entity in entities]
+        
+        # Filter for recurring transactions
+        recurring_transactions = [
+            t for t in all_transactions 
+            if t.get('is_recurring') == True and t.get('recurring_start_date')
+        ]
+        
+        due_today = []
+        
+        for transaction in recurring_transactions:
+            try:
+                # Parse the start date
+                start_date_str = transaction.get('recurring_start_date', '')
+                if 'T' in start_date_str:
+                    start_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00')).date()
+                else:
+                    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                
+                # Get the day of month from start date
+                start_day = start_date.day
+                frequency = transaction.get('recurring_frequency', 'monthly')
+                
+                # Check if today matches the recurring pattern
+                should_create = should_create_recurring_transaction_today(start_date, start_day, frequency, today)
+                
+                if should_create:
+                    # Check if transaction already exists for today
+                    already_exists = recurring_transaction_exists_for_date(transaction, today)
+                    
+                    if not already_exists:
+                        due_today.append({
+                            'user_id': transaction.get('PartitionKey'),
+                            'account_id': transaction.get('account_id'),
+                            'amount': float(transaction.get('amount', 0)),
+                            'description': transaction.get('description', ''),
+                            'category': transaction.get('category', ''),
+                            'transaction_type': transaction.get('transaction_type', ''),
+                            'recurring_frequency': frequency,
+                            'recurring_start_date': start_date_str,
+                            'original_transaction_id': transaction.get('RowKey')
+                        })
+                
+            except Exception as e:
+                logging.warning(f"Error processing recurring transaction {transaction.get('RowKey', 'unknown')}: {str(e)}")
+                continue
+        
+        return due_today
+        
+    except Exception as e:
+        logging.error(f"Error finding recurring transactions due today: {str(e)}")
+        return []
+
+def should_create_recurring_transaction_today(start_date: datetime.date, start_day: int, frequency: str, today: datetime.date) -> bool:
+    """Determine if a recurring transaction should be created today"""
+    try:
+        if frequency == 'monthly':
+            # For monthly, check if today is the same day of month as start date
+            if today.day == start_day:
+                # Check if we're in the same month or a month after the start month
+                months_since_start = (today.year - start_date.year) * 12 + (today.month - start_date.month)
+                # Allow same month (months_since_start >= 0) for current month recurring transactions
+                return months_since_start >= 0
+            return False
+            
+        elif frequency == 'yearly':
+            # For yearly, check if today is the same month and day as start date
+            if today.month == start_date.month and today.day == start_day:
+                # Check if we're in the same year or a year after the start year
+                years_since_start = today.year - start_date.year
+                return years_since_start >= 0
+            return False
+            
+        else:
+            logging.warning(f"Unknown recurring frequency: {frequency}")
+            return False
+            
+    except Exception as e:
+        logging.error(f"Error checking if recurring transaction should be created today: {str(e)}")
+        return False
+
+def recurring_transaction_exists_for_date(original_transaction: Dict, target_date: datetime.date) -> bool:
+    """Check if a recurring transaction already exists for the target date"""
+    try:
+        table_client = get_table_client("Transactions")
+        
+        # Get all transactions for the same user and account
+        entities = table_client.list_entities()
+        all_transactions = [dict(entity) for entity in entities]
+        
+        user_id = original_transaction.get('PartitionKey')
+        account_id = original_transaction.get('account_id')
+        target_date_str = target_date.strftime('%Y-%m-%d')
+        
+        # Check if there's already a transaction for this date with the same details
+        # BUT exclude the original recurring transaction (the one we're checking for)
+        original_transaction_id = original_transaction.get('RowKey')
+        
+        for transaction in all_transactions:
+            if (transaction.get('PartitionKey') == user_id and
+                transaction.get('account_id') == account_id and
+                transaction.get('transaction_date', '').startswith(target_date_str) and
+                transaction.get('is_recurring') == True and
+                transaction.get('RowKey') != original_transaction_id):  # Exclude the original transaction
+                return True
+        
+        return False
+        
+    except Exception as e:
+        logging.error(f"Error checking if recurring transaction exists for date: {str(e)}")
+        return False
+
+def create_recurring_transaction_for_date(recurring_config: Dict, target_date_str: str) -> bool:
+    """Create a recurring transaction for a specific date"""
+    try:
+        # Generate unique transaction ID
+        transaction_id = str(uuid.uuid4())
+        
+        # Create transaction entity
+        transaction_entity = {
+            'PartitionKey': recurring_config['user_id'],
+            'RowKey': transaction_id,
+            'account_id': recurring_config['account_id'],
+            'amount': recurring_config['amount'],
+            'description': recurring_config['description'],
+            'category': recurring_config['category'],
+            'transaction_type': recurring_config['transaction_type'],
+            'transaction_date': target_date_str,
+            'is_recurring': True,
+            'recurring_frequency': recurring_config['recurring_frequency'],
+            'recurring_start_date': recurring_config['recurring_start_date'],
+            'created_date': datetime.utcnow().isoformat(),
+            'last_updated': datetime.utcnow().isoformat()
+        }
+        
+        # Save to table
+        table_client = get_table_client("Transactions")
+        table_client.create_entity(transaction_entity)
+        
+        # Update account balance
+        update_account_balance(
+            recurring_config['account_id'], 
+            recurring_config['user_id'], 
+            recurring_config['amount'], 
+            recurring_config['transaction_type']
+        )
+        
+        logging.info(f"Created recurring transaction {transaction_id} for date {target_date_str}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"Error creating recurring transaction for date {target_date_str}: {str(e)}")
+        return False
+
+# Manual trigger endpoint for testing recurring transactions
+@app.route(route="recurring/process", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def manual_recurring_process_api(req: func.HttpRequest) -> func.HttpResponse:
+    """Manual API endpoint to trigger recurring transaction processing (for testing)"""
+    try:
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        # Check if this is production environment
+        environment = os.environ.get("ENVIRONMENT", "development")
+        if environment.lower() == "production":
+            return func.HttpResponse(
+                json.dumps({"error": "This endpoint is not available in production"}),
+                status_code=403,
+                headers=get_cors_headers()
+            )
+        
+        if req.method == "POST":
+            # Get today's date
+            today = datetime.utcnow().date()
+            today_str = today.strftime('%Y-%m-%d')
+            
+            logging.info(f"Manual recurring transaction processing triggered for date: {today_str}")
+            
+            # Find all recurring transactions that should be created today
+            recurring_transactions_to_create = find_recurring_transactions_due_today(today)
+            
+            if not recurring_transactions_to_create:
+                return func.HttpResponse(
+                    json.dumps({
+                        "message": "No recurring transactions due today",
+                        "date": today_str,
+                        "found": 0,
+                        "created": 0,
+                        "failed": 0
+                    }),
+                    status_code=200,
+                    headers=get_cors_headers()
+                )
+            
+            # Create the transactions
+            created_count = 0
+            failed_count = 0
+            
+            for recurring_config in recurring_transactions_to_create:
+                try:
+                    success = create_recurring_transaction_for_date(recurring_config, today_str)
+                    if success:
+                        created_count += 1
+                    else:
+                        failed_count += 1
+                except Exception as e:
+                    failed_count += 1
+                    logging.error(f"Error creating recurring transaction: {str(e)}")
+            
+            result = {
+                "message": "Recurring transaction processing completed",
+                "date": today_str,
+                "found": len(recurring_transactions_to_create),
+                "created": created_count,
+                "failed": failed_count
+            }
+            
+            return func.HttpResponse(
+                json.dumps(result),
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        return func.HttpResponse(
+            json.dumps({"error": "Method not allowed"}),
+            status_code=405,
+            headers=get_cors_headers()
+        )
+    
+    except Exception as e:
+        logging.error(f"Error in manual recurring process API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error", "details": str(e)}),
+            status_code=500,
+            headers=get_cors_headers()
         )
