@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <title>Welcome to Panduhz Financial Tracker</title>
   <link rel="stylesheet" href="loggedIn.css">
-                                                                                            <script>
+                                                                                                <script>
   window.REACT_APP_API_URL = 'http://localhost:7071/api';
   window.REACT_APP_ENVIRONMENT = 'development';
   window.REACT_APP_DEBUG = true;
@@ -53,7 +53,9 @@
   <!-- Include the MSAL.js library -->
   <script src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
   
-  <!-- Include your external JavaScript files -->
+  <!-- Include centralized configuration and utilities -->
+  <script src="config.js"></script>
+  <script src="utils.js"></script>
   <script src="auth.js"></script>
 
   <script>
@@ -122,10 +124,6 @@
       userAvatarElement.textContent = firstName.charAt(0).toUpperCase();
       
       // Store user information in localStorage for future use
-      localStorage.setItem('userId', userId);
-      localStorage.setItem('firstName', firstName);
-      localStorage.setItem('lastName', lastName);
-      localStorage.setItem('email', email);
     }
 
     function startFinancialTracking() {

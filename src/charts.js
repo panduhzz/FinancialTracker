@@ -214,42 +214,7 @@ function destroyAllCharts() {
   });
 }
 
-// Show message function (if not already defined)
-function showMessage(message, type = 'info') {
-  // Create a simple message display
-  const messageDiv = document.createElement('div');
-  messageDiv.className = `message ${type}`;
-  messageDiv.textContent = message;
-  messageDiv.style.cssText = `
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    padding: 15px 20px;
-    border-radius: 5px;
-    color: white;
-    font-weight: bold;
-    z-index: 1000;
-    max-width: 300px;
-    word-wrap: break-word;
-  `;
-  
-  if (type === 'success') {
-    messageDiv.style.backgroundColor = '#28a745';
-  } else if (type === 'error') {
-    messageDiv.style.backgroundColor = '#dc3545';
-  } else {
-    messageDiv.style.backgroundColor = '#6c757d';
-  }
-  
-  document.body.appendChild(messageDiv);
-  
-  // Auto-remove after 5 seconds
-  setTimeout(() => {
-    if (messageDiv.parentNode) {
-      messageDiv.parentNode.removeChild(messageDiv);
-    }
-  }, 5000);
-}
+// Use centralized showMessage from utils.js
 
 // Debug: Confirm charts.js is loaded
 console.log('charts.js loaded successfully - loadAccountBalanceChart function available:', typeof loadAccountBalanceChart);

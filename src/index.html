@@ -135,7 +135,7 @@
       }
     }
   </style>
-                                                                                    <script>
+                                                                                        <script>
   window.REACT_APP_API_URL = 'http://localhost:7071/api';
   window.REACT_APP_ENVIRONMENT = 'development';
   window.REACT_APP_DEBUG = true;
@@ -173,6 +173,9 @@
 
   <!-- Include the MSAL.js library -->
   <script src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
+  <!-- Include centralized configuration and utilities -->
+  <script src="config.js"></script>
+  <script src="utils.js"></script>
   <!-- Include your external JavaScript file -->
   <script src="auth.js"></script>
   
@@ -191,12 +194,6 @@
     function hideLoading() {
       loading.classList.remove('show');
       signInButton.disabled = false;
-    }
-
-    function updateUIAfterLogin(familyName, givenName) {
-      // This function is no longer used since we redirect immediately in auth.js
-      // But keeping it for compatibility
-      window.location.replace(window.getNavigationUrl('/login', '/loggedIn.html'));
     }
 
     function showLoginForm() {
