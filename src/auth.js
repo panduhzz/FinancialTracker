@@ -1,4 +1,15 @@
 
+// Global utility functions
+window.isProduction = function() {
+  return window.location.hostname !== 'localhost' && 
+         !window.location.hostname.includes('127.0.0.1') &&
+         !window.location.hostname.includes('azurewebsites.net');
+};
+
+window.getNavigationUrl = function(productionPath, localPath) {
+  return window.isProduction() ? productionPath : localPath;
+};
+
 // Wait for MSAL library to load
 window.addEventListener('load', function() {
   // Include the MSAL.js configuration and initialization
