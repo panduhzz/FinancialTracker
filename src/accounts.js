@@ -362,13 +362,7 @@ function goToCreateAccount() {
 
 // Use centralized utility functions from utils.js
 
-// Close modals when clicking outside
-window.onclick = function(event) {
-  const modal = document.getElementById('accountSummaryModal');
-  if (event.target === modal) {
-    closeAccountSummaryModal();
-  }
-}
+// Close modals when clicking outside - handled in the new window.onclick function below
 
 function closeAccountSummaryModal() {
   document.getElementById('accountSummaryModal').style.display = 'none';
@@ -479,6 +473,149 @@ async function deleteAccount() {
     showMessage('Network error while deleting account. Please try again.', 'error');
   } finally {
     showLoading(false);
+  }
+}
+
+// Search functionality
+function openSearchModal() {
+  document.getElementById('searchModal').style.display = 'block';
+  // Clear previous results
+  document.getElementById('searchResults').style.display = 'none';
+  document.getElementById('searchResultsList').innerHTML = '';
+  
+  // Prevent background scrolling
+  document.body.classList.add('modal-open');
+}
+
+function closeSearchModal() {
+  document.getElementById('searchModal').style.display = 'none';
+  
+  // Restore background scrolling
+  document.body.classList.remove('modal-open');
+}
+
+function clearSearch() {
+  document.getElementById('searchForm').reset();
+  document.getElementById('searchResults').style.display = 'none';
+  document.getElementById('searchResultsList').innerHTML = '';
+}
+
+async function performSearch(event) {
+  if (event) {
+    event.preventDefault();
+  }
+  
+  try {
+    // Get search parameters
+    const description = document.getElementById('searchDescription').value.trim();
+    const category = document.getElementById('searchCategory').value;
+    const startDate = document.getElementById('searchStartDate').value;
+    const endDate = document.getElementById('searchEndDate').value;
+    const transactionType = document.getElementById('searchTransactionType').value;
+    
+    // Build query parameters
+    const params = new URLSearchParams();
+    if (description) params.append('description', description);
+    if (category) params.append('category', category);
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    if (transactionType) params.append('transaction_type', transactionType);
+    params.append('limit', '100');
+    
+    // Show loading state
+    const resultsContainer = document.getElementById('searchResults');
+    const resultsList = document.getElementById('searchResultsList');
+    
+    resultsContainer.style.display = 'block';
+    resultsList.innerHTML = '<div class="search-loading">Searching transactions...</div>';
+    
+    // Make API request
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/transactions/search?${params.toString()}`, {
+      method: 'GET'
+    });
+    
+    if (response.ok) {
+      const searchData = await response.json();
+      displaySearchResults(searchData);
+    } else {
+      const errorData = await response.json();
+      resultsList.innerHTML = `
+        <div class="search-no-results">
+          <h4>Search Error</h4>
+          <p>${errorData.error || 'Failed to search transactions'}</p>
+        </div>
+      `;
+    }
+  } catch (error) {
+    console.error('Error performing search:', error);
+    const resultsList = document.getElementById('searchResultsList');
+    resultsList.innerHTML = `
+      <div class="search-no-results">
+        <h4>Search Error</h4>
+        <p>Network error while searching. Please try again.</p>
+      </div>
+    `;
+  }
+}
+
+function displaySearchResults(searchData) {
+  const resultsList = document.getElementById('searchResultsList');
+  const transactions = searchData.transactions || [];
+  
+  if (transactions.length === 0) {
+    resultsList.innerHTML = `
+      <div class="search-no-results">
+        <h4>No Transactions Found</h4>
+        <p>No transactions match your search criteria. Try adjusting your filters.</p>
+      </div>
+    `;
+    return;
+  }
+  
+  const resultsHtml = transactions.map(transaction => {
+    const amount = parseFloat(transaction.amount);
+    const transactionType = transaction.transaction_type;
+    const amountClass = transactionType === 'income' ? 'income' : 'expense';
+    const amountDisplay = transactionType === 'income' ? `+$${amount.toFixed(2)}` : `-$${amount.toFixed(2)}`;
+    
+    return `
+      <div class="search-result-item">
+        <div class="search-result-info">
+          <div class="search-result-description">
+            ${transaction.description}
+            ${transaction.is_recurring ? '<span class="recurring-badge">Recurring</span>' : ''}
+          </div>
+          <div class="search-result-details">
+            <span class="search-result-account">${transaction.account_name}</span>
+            <span>${transaction.category}</span>
+            <span>${formatTransactionDate(transaction.transaction_date)}</span>
+          </div>
+        </div>
+        <div class="search-result-actions">
+          <div class="search-result-amount ${amountClass}">${amountDisplay}</div>
+          <button class="btn btn-small btn-danger" onclick="confirmDeleteTransaction('${transaction.RowKey}', '${transaction.description}', '${transaction.account_id}')" title="Delete transaction">
+            <span class="icon">🗑️</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  resultsList.innerHTML = resultsHtml;
+}
+
+// Close search modal when clicking outside
+window.onclick = function(event) {
+  const searchModal = document.getElementById('searchModal');
+  const accountSummaryModal = document.getElementById('accountSummaryModal');
+  const deleteAccountModal = document.getElementById('deleteAccountModal');
+  
+  if (event.target === searchModal) {
+    closeSearchModal();
+  } else if (event.target === accountSummaryModal) {
+    closeAccountSummaryModal();
+  } else if (event.target === deleteAccountModal) {
+    closeDeleteAccountModal();
   }
 }
 
