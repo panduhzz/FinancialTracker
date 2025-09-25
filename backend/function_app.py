@@ -1075,6 +1075,85 @@ def get_account_monthly_history(account_id: str, user_id: str, months: int = 12)
         logging.error(f"Error getting account monthly history: {str(e)}")
         return {"error": str(e)}
 
+def search_transactions(user_id: str, description: str = None, category: str = None, 
+                       start_date: str = None, end_date: str = None, 
+                       transaction_type: str = None, limit: int = 100) -> Dict:
+    """Search transactions with various filters"""
+    try:
+        # Ensure tables exist
+        ensure_tables_exist()
+        
+        # Get all active accounts to filter transactions
+        active_accounts = get_user_accounts(user_id)
+        active_account_ids = {account['account_id'] for account in active_accounts}
+        
+        table_client = get_table_client("Transactions")
+        entities = table_client.list_entities()
+        
+        # Convert to list and filter by user ID and active accounts
+        all_transactions = [dict(entity) for entity in entities if entity.get('PartitionKey') == user_id]
+        filtered_transactions = [
+            transaction for transaction in all_transactions 
+            if transaction.get('account_id') in active_account_ids
+        ]
+        
+        # Apply search filters
+        search_results = []
+        
+        for transaction in filtered_transactions:
+            # Description filter (case-insensitive partial match)
+            if description and description.lower() not in transaction.get('description', '').lower():
+                continue
+                
+            # Category filter (exact match)
+            if category and transaction.get('category', '').lower() != category.lower():
+                continue
+                
+            # Transaction type filter
+            if transaction_type and transaction.get('transaction_type', '').lower() != transaction_type.lower():
+                continue
+                
+            # Date range filter
+            if start_date or end_date:
+                transaction_date = transaction.get('transaction_date', '')
+                if start_date and transaction_date < start_date:
+                    continue
+                if end_date and transaction_date > end_date:
+                    continue
+            
+            search_results.append(transaction)
+        
+        # Sort by date (newest first)
+        search_results.sort(key=lambda x: x.get('transaction_date', ''), reverse=True)
+        
+        # Apply limit
+        search_results = search_results[:limit]
+        
+        # Get account names for context
+        account_names = {account['account_id']: account['account_name'] for account in active_accounts}
+        
+        # Add account names to results
+        for result in search_results:
+            result['account_name'] = account_names.get(result.get('account_id', ''), 'Unknown Account')
+        
+        return {
+            "transactions": search_results,
+            "total_count": len(search_results),
+            "search_criteria": {
+                "description": description,
+                "category": category,
+                "start_date": start_date,
+                "end_date": end_date,
+                "transaction_type": transaction_type
+            }
+        }
+        
+    except Exception as e:
+        logging.error(f"Error searching transactions: {str(e)}")
+        if handle_first_time_user_error(str(e), user_id, "search_transactions"):
+            return {"transactions": [], "total_count": 0, "error": "No transactions found"}
+        raise e
+
 def get_balance_history(user_id: str, months: int = 12) -> Dict:
     """Calculate historical balance snapshots for all accounts by reconstructing from transactions"""
     try:
@@ -1520,6 +1599,97 @@ def delete_transaction_api(req: func.HttpRequest) -> func.HttpResponse:
             json.dumps({"error": "Internal server error", "details": str(e)}),
             status_code=500,
             headers={"Content-Type": "application/json"}
+        )
+
+@app.route(route="transactions/search", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def search_transactions_api(req: func.HttpRequest) -> func.HttpResponse:
+    """API endpoint for searching transactions"""
+    try:
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
+        
+        # Get search parameters from query string
+        description = req.params.get('description', '').strip() or None
+        category = req.params.get('category', '').strip() or None
+        start_date = req.params.get('start_date', '').strip() or None
+        end_date = req.params.get('end_date', '').strip() or None
+        transaction_type = req.params.get('transaction_type', '').strip() or None
+        limit = int(req.params.get('limit', 100))
+        
+        # Validate date format if provided
+        if start_date:
+            try:
+                datetime.strptime(start_date, '%Y-%m-%d')
+            except ValueError:
+                return func.HttpResponse(
+                    json.dumps({"error": "Invalid start_date format. Use YYYY-MM-DD"}),
+                    status_code=400,
+                    headers=get_cors_headers()
+                )
+        
+        if end_date:
+            try:
+                datetime.strptime(end_date, '%Y-%m-%d')
+            except ValueError:
+                return func.HttpResponse(
+                    json.dumps({"error": "Invalid end_date format. Use YYYY-MM-DD"}),
+                    status_code=400,
+                    headers=get_cors_headers()
+                )
+        
+        # Validate transaction_type if provided
+        if transaction_type and transaction_type.lower() not in ['income', 'expense']:
+            return func.HttpResponse(
+                json.dumps({"error": "Invalid transaction_type. Must be 'income' or 'expense'"}),
+                status_code=400,
+                headers=get_cors_headers()
+            )
+        
+        # Perform search
+        search_results = search_transactions(
+            user_id=user_id,
+            description=description,
+            category=category,
+            start_date=start_date,
+            end_date=end_date,
+            transaction_type=transaction_type,
+            limit=limit
+        )
+        
+        if "error" in search_results:
+            return func.HttpResponse(
+                json.dumps({"error": search_results["error"]}),
+                status_code=500,
+                headers=get_cors_headers()
+            )
+        
+        return func.HttpResponse(
+            json.dumps(search_results),
+            status_code=200,
+            headers=get_cors_headers()
+        )
+        
+    except Exception as e:
+        logging.error(f"Error in search transactions API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error", "details": str(e)}),
+            status_code=500,
+            headers=get_cors_headers()
         )
 
 @app.route(route="transactions/recent", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
