@@ -196,7 +196,7 @@
     function updateUIAfterLogin(familyName, givenName) {
       // This function is no longer used since we redirect immediately in auth.js
       // But keeping it for compatibility
-      window.location.replace('/loggedIn.html');
+      window.location.replace(window.getNavigationUrl('/login', '/loggedIn.html'));
     }
 
     function showLoginForm() {
@@ -233,8 +233,8 @@
           
           const currentAccounts = window.msalInstance.getAllAccounts();
           if (currentAccounts && currentAccounts.length > 0) {
-            // User is already logged in, redirect immediately to loggedIn.html
-            window.location.replace("/loggedIn.html");
+            // User is already logged in, redirect immediately to login page
+            window.location.replace(window.getNavigationUrl('/login', '/loggedIn.html'));
             return;
           }
         }

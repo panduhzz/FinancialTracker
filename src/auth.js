@@ -75,8 +75,8 @@ function signIn() {
       localStorage.setItem('familyName', familyName);
       localStorage.setItem('givenName', givenName);
       
-      // Redirect immediately to loggedIn.html
-      window.location.replace("/loggedIn.html");
+      // Redirect immediately to login page using environment-based navigation
+      window.location.replace(window.getNavigationUrl('/login', '/loggedIn.html'));
     })
     .catch(error => {
       // Handle login error
@@ -88,7 +88,7 @@ function signIn() {
 function updateUIAfterLogin(familyName, givenName) {
   // This function is no longer used since we redirect immediately in signIn()
   // But keeping it for compatibility
-  window.location.replace("/loggedIn.html");
+  window.location.replace(window.getNavigationUrl('/login', '/loggedIn.html'));
 }
 
 function checkToken(){
