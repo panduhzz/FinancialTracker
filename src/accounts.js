@@ -421,11 +421,11 @@ function updateAccountButton(accountId) {
 // Navigation Functions
 function goBack() {
   // console.log('goBack() function called');
-  window.location.href = '/financialTracking.html';
+  window.location.href = window.getNavigationUrl('/dashboard', '/financialTracking.html');
 }
 
 function goToCreateAccount() {
-  window.location.href = '/financialTracking.html';
+  window.location.href = window.getNavigationUrl('/dashboard', '/financialTracking.html');
 }
 
 function handleSignOut() {

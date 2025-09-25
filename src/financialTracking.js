@@ -514,7 +514,7 @@ function showMessage(message, type) {
 }
 
 function viewAllAccounts() {
-  window.location.href = '/accounts.html';
+  window.location.href = window.getNavigationUrl('/accounts', '/accounts.html');
 }
 
 function handleSignOut() {
