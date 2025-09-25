@@ -4,80 +4,9 @@ let userAccounts = [];
 let financialSummary = {};
 let expandedAccounts = new Set(); // Track which accounts have expanded summaries
 
-function formatTransactionDate(dateString) {
-  // Parse date string directly to avoid timezone conversion issues
-  if (!dateString) return 'Unknown Date';
-  
-  // If it's already in YYYY-MM-DD format, parse it directly
-  if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
-    const [year, month, day] = dateString.split('-');
-    return `${parseInt(month)}/${parseInt(day)}/${year}`;
-  }
-  
-  // Fallback to Date parsing for other formats
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString();
-  } catch (error) {
-    console.error('Error parsing date:', dateString, error);
-    return 'Invalid Date';
-  }
-}
+// Use centralized formatTransactionDate from utils.js
 
-// API Configuration - uses build-time environment variables
-const API_CONFIG = {
-  getBaseUrl: function() {
-    // Method 1: Use runtime environment variables (injected by build script)
-    if (window.REACT_APP_API_URL) {
-      return window.REACT_APP_API_URL;
-    }
-    
-    // Method 2: Use global window variable (fallback)
-    if (window.API_URL) {
-      return window.API_URL;
-    }
-    
-    // Method 3: Use meta tag (alternative)
-    const metaApiUrl = document.querySelector('meta[name="api-url"]');
-    if (metaApiUrl) {
-      return metaApiUrl.getAttribute('content');
-    }
-    
-    // Method 4: Fallback based on environment detection
-    const hostname = window.location.hostname;
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'http://localhost:7071/api';
-    } else {
-      return '/api';
-    }
-  },
-  
-  // Debug method to log current configuration
-  logConfig: function() {
-    console.log('API Configuration:', {
-      hostname: window.location.hostname,
-      baseUrl: this.getBaseUrl(),
-      environment: this.getEnvironment(),
-      runtimeEnv: window.REACT_APP_API_URL || 'N/A',
-      debug: window.REACT_APP_DEBUG || 'N/A'
-    });
-  },
-  
-  getEnvironment: function() {
-    if (window.REACT_APP_ENVIRONMENT) {
-      return window.REACT_APP_ENVIRONMENT;
-    }
-    
-    const hostname = window.location.hostname;
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'development';
-    } else if (hostname.includes('.azurestaticapps.net')) {
-      return 'production';
-    } else {
-      return 'production';
-    }
-  }
-};
+// Use centralized API_CONFIG from config.js
 
 // Initialize the page
 document.addEventListener('DOMContentLoaded', function() {
@@ -428,63 +357,10 @@ function goToCreateAccount() {
   window.location.href = window.getNavigationUrl('/dashboard', '/financialTracking.html');
 }
 
-function handleSignOut() {
-  if (window.msalInstance) {
-    window.msalInstance.logout();
-    localStorage.clear();
-    window.location.replace('/index.html');
-  } else {
-    localStorage.clear();
-    window.location.replace('/index.html');
-  }
-}
+// Use centralized handleSignOut from utils.js
 
-// Test function for debugging
-async function testAccountSummary() {
-  try {
-    console.log('Testing account summary...');
-    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/test-account-summary`, {
-      method: 'GET'
-    });
-    
-    if (response.ok) {
-      const result = await response.json();
-      console.log('Test result:', result);
-      return result;
-    } else {
-      console.error('Test failed:', response.status, response.statusText);
-    }
-  } catch (error) {
-    console.error('Test error:', error);
-  }
-}
 
-// Utility Functions
-function showLoading(show) {
-  document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
-}
-
-function showMessage(message, type) {
-  // Remove existing messages
-  const existingMessages = document.querySelectorAll('.message');
-  existingMessages.forEach(msg => msg.remove());
-  
-  // Create new message
-  const messageDiv = document.createElement('div');
-  messageDiv.className = `message ${type}`;
-  messageDiv.textContent = message;
-  
-  // Insert at the top of the container
-  const container = document.querySelector('.container');
-  container.insertBefore(messageDiv, container.firstChild);
-  
-  // Auto-remove after 5 seconds
-  setTimeout(() => {
-    if (messageDiv.parentNode) {
-      messageDiv.remove();
-    }
-  }, 5000);
-}
+// Use centralized utility functions from utils.js
 
 // Close modals when clicking outside
 window.onclick = function(event) {

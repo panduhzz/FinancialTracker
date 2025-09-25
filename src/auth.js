@@ -39,9 +39,6 @@ window.addEventListener('load', function() {
   window.msalInstance.addEventCallback((message) => {
     if (message.eventType === msal.EventType.LOGIN_SUCCESS) {
       console.log("Account added:", message.payload);
-      const familyName = localStorage.getItem('familyName');
-      const givenName = localStorage.getItem('givenName');
-      updateUIAfterLogin(familyName, givenName);
       console.log("payload:" + message.payload);
     }
     //can add else if statements for different EventTypes. Don't see a need at the moment for other ones.
@@ -71,9 +68,6 @@ function signIn() {
       console.log(familyName);
       const givenName = account.idTokenClaims.given_name;
       console.log(givenName);
-      // Store user information in local storage
-      localStorage.setItem('familyName', familyName);
-      localStorage.setItem('givenName', givenName);
       
       // Redirect immediately to login page using environment-based navigation
       window.location.replace(window.getNavigationUrl('/login', '/loggedIn.html'));
@@ -83,23 +77,6 @@ function signIn() {
       console.error('Login failed:', error);
     });
 };
-
-// Function to update the UI after login
-function updateUIAfterLogin(familyName, givenName) {
-  // This function is no longer used since we redirect immediately in signIn()
-  // But keeping it for compatibility
-  window.location.replace(window.getNavigationUrl('/login', '/loggedIn.html'));
-}
-
-function checkToken(){
-  console.log("Checking token")
-  if (window.msalInstance) {
-    const accountSession = window.msalInstance.getAllAccounts();
-    console.log(accountSession)
-    const token = window.msalInstance.acquireTokenSilent()
-    console.log(token)
-  }
-}
   
 // Secure API request function
 async function makeAuthenticatedRequest(url, options = {}) {
