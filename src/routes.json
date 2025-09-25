@@ -1,0 +1,44 @@
+{
+    "routes": [
+      {
+        "route": "/",
+        "serve": "/index.html",
+        "statusCode": 200
+      },
+      {
+        "route": "/dashboard",
+        "serve": "/financialTracking.html",
+        "statusCode": 200
+      },
+      {
+        "route": "/accounts",
+        "serve": "/accounts.html",
+        "statusCode": 200
+      },
+      {
+        "route": "/login",
+        "serve": "/loggedIn.html",
+        "statusCode": 200
+      },
+      {
+        "route": "/financial-tracking",
+        "serve": "/financialTracking.html",
+        "statusCode": 200
+      },
+      {
+        "route": "/signin",
+        "serve": "/index.html",
+        "statusCode": 200
+      }
+    ],
+    "navigationFallback": {
+      "rewrite": "/index.html",
+      "exclude": ["/api/*", "/.well-known/*"]
+    },
+    "mimeTypes": {
+      ".json": "application/json",
+      ".js": "application/javascript",
+      ".css": "text/css",
+      ".html": "text/html"
+    }
+  }
