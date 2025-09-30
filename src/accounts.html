@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>All Accounts - Panduhz Financial Tracker</title>
   <link rel="stylesheet" href="accounts.css">
-                                                                                                      <script>
+                                                                                                              <script>
   window.REACT_APP_API_URL = 'http://localhost:7071/api';
   window.REACT_APP_ENVIRONMENT = 'development';
   window.REACT_APP_DEBUG = true;
@@ -46,6 +46,10 @@
       <button class="btn btn-secondary" onclick="goBack()">
         <span class="icon">←</span>
         Back to Dashboard
+      </button>
+      <button class="btn btn-primary" onclick="openRecurringModal()">
+        <span class="icon">🔄</span>
+        View All Recurring Transactions
       </button>
       <button class="btn btn-primary" onclick="openSearchModal()">
         <span class="icon">🔍</span>
@@ -163,6 +167,28 @@
         <button class="btn btn-secondary" onclick="closeSearchModal()">Close</button>
         <button class="btn btn-primary" onclick="performSearch()">Search</button>
         <button class="btn btn-secondary" onclick="clearSearch()">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recurring Transactions Modal -->
+  <div id="recurringModal" class="modal">
+    <div class="modal-content recurring-modal">
+      <div class="modal-header">
+        <h2>All Recurring Transactions</h2>
+        <span class="close" onclick="closeRecurringModal()">&times;</span>
+      </div>
+      <div class="modal-body">
+        <div id="recurringContent">
+          <div class="recurring-loading">
+            <div class="loading-spinner"></div>
+            <p>Loading recurring transactions...</p>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeRecurringModal()">Close</button>
+        <button class="btn btn-primary" onclick="refreshRecurringTransactions()">Refresh</button>
       </div>
     </div>
   </div>

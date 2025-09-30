@@ -16,7 +16,6 @@ document.addEventListener('DOMContentLoaded', function() {
 // Refresh data when page becomes visible (e.g., when navigating back from financial tracking page)
 document.addEventListener('visibilitychange', function() {
   if (!document.hidden) {
-    console.log('🔄 Page became visible, refreshing data...');
     // Force refresh of data to get latest information
     loadUserData();
   }
@@ -53,7 +52,6 @@ async function initializePage() {
         email: account.idTokenClaims.emails[0]
       };
       
-      // console.log('Current user initialized:', currentUser);
       
       // Update UI with user info
       document.getElementById('userName').textContent = `Welcome, ${currentUser.name}!`;
@@ -109,7 +107,6 @@ async function loadFinancialSummary() {
     if (response.ok) {
       financialSummary = await response.json();
     } else {
-      console.log('Error loading financial summary');
       financialSummary = {};
     }
   } catch (error) {
@@ -126,9 +123,7 @@ async function loadUserAccounts() {
     
     if (response.ok) {
       userAccounts = await response.json();
-      console.log('Loaded accounts:', userAccounts);
     } else {
-      console.log('No accounts found or error loading accounts');
       userAccounts = [];
     }
   } catch (error) {
@@ -156,7 +151,6 @@ function updateFinancialSummary() {
 
 function displayAccounts() {
   const container = document.getElementById('accountsList');
-  // console.log('Displaying accounts:', userAccounts);
   
   if (userAccounts.length === 0) {
     container.innerHTML = `
@@ -358,7 +352,6 @@ function updateAccountButton(accountId) {
 
 // Navigation Functions
 function goBack() {
-  // console.log('goBack() function called');
   window.location.href = window.getNavigationUrl('/dashboard', '/financialTracking.html');
 }
 
@@ -400,7 +393,6 @@ async function deleteTransaction(transactionId, accountId) {
       
       // Invalidate cache after successful deletion
       if (window.cacheInvalidation) {
-        console.log('🗑️ Invalidating cache after transaction deletion');
         window.cacheInvalidation.invalidateTransactionData();
         window.cacheInvalidation.invalidateUserData(); // Also invalidate user data for financial summary
         window.cacheInvalidation.invalidateAccountData(accountId); // Invalidate specific account data
@@ -456,7 +448,6 @@ async function deleteAccount() {
     return;
   }
 
-  console.log('Deleting account:', accountToDelete);
   showLoading(true);
   
   try {
@@ -464,11 +455,9 @@ async function deleteAccount() {
       method: 'DELETE'
     });
     
-    console.log('Delete response status:', response.status);
     
     if (response.ok) {
       const result = await response.json();
-      console.log('Delete result:', result);
       showMessage(result.message || 'Account deleted successfully!', 'success');
       
       // Invalidate cache after successful deletion
@@ -480,9 +469,7 @@ async function deleteAccount() {
       closeDeleteAccountModal();
       
       // Reload the accounts list
-      console.log('Reloading user data after deletion...');
       await loadUserData();
-      console.log('User accounts after reload:', userAccounts);
       displayAccounts();
       updateFinancialSummary();
     } else {
@@ -626,14 +613,298 @@ function displaySearchResults(searchData) {
   resultsList.innerHTML = resultsHtml;
 }
 
-// Close search modal when clicking outside
+// Recurring Transactions Functions
+function openRecurringModal() {
+  document.getElementById('recurringModal').style.display = 'block';
+  
+  // Prevent background scrolling
+  document.body.classList.add('modal-open');
+  
+  // Load recurring transactions
+  loadRecurringTransactions();
+}
+
+function closeRecurringModal() {
+  document.getElementById('recurringModal').style.display = 'none';
+  
+  // Restore background scrolling
+  document.body.classList.remove('modal-open');
+}
+
+async function loadRecurringTransactions(forceRefresh = false) {
+  try {
+    let url = `${API_CONFIG.getBaseUrl()}/recurring-transactions`;
+    
+    // Add cache-busting parameter if force refresh is requested
+    if (forceRefresh) {
+      url += `?t=${Date.now()}`;
+    }
+    
+    const response = await makeAuthenticatedRequest(url, {
+      method: 'GET'
+    });
+    
+    if (response.ok) {
+      const recurringData = await response.json();
+      displayRecurringTransactions(recurringData);
+    } else {
+      const errorData = await response.json();
+      displayRecurringError(errorData.error || 'Failed to load recurring transactions');
+    }
+  } catch (error) {
+    console.error('Error loading recurring transactions:', error);
+    displayRecurringError('Network error while loading recurring transactions. Please try again.');
+  }
+}
+
+function displayRecurringTransactions(recurringData) {
+  const content = document.getElementById('recurringContent');
+  const transactions = recurringData.recurring_transactions || [];
+  
+  if (transactions.length === 0) {
+    content.innerHTML = `
+      <div class="recurring-no-transactions">
+        <h4>No Recurring Transactions</h4>
+        <p>You don't have any recurring transactions set up yet.</p>
+        <p>Create recurring transactions from the main dashboard to see them here.</p>
+      </div>
+    `;
+    return;
+  }
+  
+  const transactionsHtml = transactions.map(transaction => {
+    const amount = parseFloat(transaction.amount);
+    const transactionType = transaction.transaction_type;
+    const amountClass = transactionType === 'income' ? 'income' : 'expense';
+    const amountDisplay = transactionType === 'income' ? `+$${amount.toFixed(2)}` : `-$${amount.toFixed(2)}`;
+    
+    // Format occurrence dates
+    const occurrenceDates = transaction.occurrence_dates || [];
+    const formattedDates = occurrenceDates.map(date => {
+      const dateObj = new Date(date);
+      return `${dateObj.getMonth() + 1}/${dateObj.getDate()}`;
+    }).join(', ');
+    
+    // Format next occurrence
+    let nextOccurrenceHtml = '';
+    if (transaction.next_occurrence) {
+      const nextDate = new Date(transaction.next_occurrence);
+      const nextFormatted = `${nextDate.getMonth() + 1}/${nextDate.getDate()}/${nextDate.getFullYear()}`;
+      nextOccurrenceHtml = `
+        <div class="recurring-next-occurrence">
+          Next: ${nextFormatted}
+        </div>
+      `;
+    }
+    
+    return `
+      <div class="recurring-transaction-item">
+        <div class="recurring-transaction-info">
+          <div class="recurring-transaction-description">
+            ${transaction.description}
+          </div>
+          <div class="recurring-transaction-details">
+            <span class="recurring-transaction-account">${transaction.account_name}</span>
+            <span>${transaction.category}</span>
+            <span class="recurring-transaction-frequency">${transaction.frequency}</span>
+          </div>
+          <div class="recurring-transaction-dates">
+            <div class="recurring-dates-title">Occurrence Dates:</div>
+            <div class="recurring-dates-list">
+              <span class="recurring-date-badge">${formattedDates}</span>
+              ${nextOccurrenceHtml}
+            </div>
+          </div>
+        </div>
+        <div class="recurring-transaction-actions">
+          <div class="recurring-transaction-amount ${amountClass}">${amountDisplay}</div>
+          <button class="btn btn-small btn-danger" onclick="confirmDeleteRecurringTransaction('${transaction.template_id}', '${transaction.description}', '${transaction.account_id}')" title="Delete all occurrences">
+            <span class="icon">🗑️</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  content.innerHTML = `
+    <div class="recurring-transactions-list">
+      ${transactionsHtml}
+    </div>
+  `;
+}
+
+function displayRecurringError(errorMessage) {
+  const content = document.getElementById('recurringContent');
+  content.innerHTML = `
+    <div class="recurring-error">
+      <h4>Error Loading Recurring Transactions</h4>
+      <p>${errorMessage}</p>
+    </div>
+  `;
+}
+
+function refreshRecurringTransactions() {
+  const content = document.getElementById('recurringContent');
+  content.innerHTML = `
+    <div class="recurring-loading">
+      <div class="loading-spinner"></div>
+      <p>Refreshing recurring transactions...</p>
+    </div>
+  `;
+  
+  // Clear cache before refreshing
+  if (window.cacheInvalidation) {
+    window.cacheInvalidation.invalidateRecurringTransactions();
+  }
+  
+  loadRecurringTransactions(true);
+}
+
+// Delete recurring transaction functions
+function confirmDeleteRecurringTransaction(templateId, description, accountId) {
+  const confirmed = confirm(`Are you sure you want to delete ALL occurrences of this recurring transaction?\n\nDescription: ${description}\n\nThis will delete all historical and future occurrences and update your account balance. This action cannot be undone.`);
+  
+  if (confirmed) {
+    deleteRecurringTransaction(templateId, description, accountId);
+  }
+}
+
+async function deleteRecurringTransaction(templateId, description, accountId) {
+  try {
+    showLoading(true);
+    
+    // Get all recurring transactions for this template
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/recurring-transactions`, {
+      method: 'GET'
+    });
+    
+    if (!response.ok) {
+      showMessage('Error loading recurring transactions for deletion.', 'error');
+      return;
+    }
+    
+    const recurringData = await response.json();
+    const transactions = recurringData.recurring_transactions || [];
+    
+    // Find the specific template
+    const template = transactions.find(t => t.template_id === templateId);
+    if (!template) {
+      showMessage('Recurring transaction template not found.', 'error');
+      return;
+    }
+    
+    // Get all transaction IDs for this template
+    const transactionIds = await getTransactionIdsForTemplate(template);
+    
+    if (transactionIds.length === 0) {
+      showMessage('No transactions found for this template.', 'error');
+      return;
+    }
+    
+    // Delete all transactions
+    let deletedCount = 0;
+    let failedCount = 0;
+    
+    for (const transactionId of transactionIds) {
+      try {
+        const deleteResponse = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/transactions/${transactionId}`, {
+          method: 'DELETE'
+        });
+        
+        if (deleteResponse.ok) {
+          deletedCount++;
+        } else {
+          failedCount++;
+        }
+      } catch (error) {
+        console.error(`Error deleting transaction ${transactionId}:`, error);
+        failedCount++;
+      }
+    }
+    
+    if (deletedCount > 0) {
+      showMessage(`Successfully deleted ${deletedCount} recurring transaction occurrences!`, 'success');
+      
+      // Invalidate cache
+      if (window.cacheInvalidation) {
+        window.cacheInvalidation.invalidateRecurringTransactions();
+        window.cacheInvalidation.invalidateUserData();
+        window.cacheInvalidation.invalidateAccountData(accountId);
+      }
+      
+      // Add a small delay to ensure backend has processed all deletions
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Refresh the recurring transactions view with force refresh
+      await loadRecurringTransactions(true);
+      
+      // Also refresh the main accounts data
+      await loadUserData();
+      updateFinancialSummary();
+      displayAccounts();
+      
+    } else {
+      showMessage('Failed to delete any transactions.', 'error');
+    }
+    
+    if (failedCount > 0) {
+      showMessage(`Warning: ${failedCount} transactions could not be deleted.`, 'error');
+    }
+    
+  } catch (error) {
+    console.error('Error deleting recurring transaction:', error);
+    showMessage('Network error while deleting recurring transactions. Please try again.', 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function getTransactionIdsForTemplate(template) {
+  try {
+    // Search for all transactions matching this template
+    const searchParams = new URLSearchParams();
+    searchParams.append('description', template.description);
+    searchParams.append('limit', '1000'); // Get all matching transactions
+    
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/transactions/search?${searchParams.toString()}`, {
+      method: 'GET'
+    });
+    
+    if (!response.ok) {
+      return [];
+    }
+    
+    const searchData = await response.json();
+    const transactions = searchData.transactions || [];
+    
+    // Filter for transactions that match this template exactly
+    const matchingTransactions = transactions.filter(transaction => 
+      transaction.description === template.description &&
+      parseFloat(transaction.amount) === template.amount &&
+      transaction.category === template.category &&
+      transaction.account_id === template.account_id &&
+      (transaction.is_recurring === true || transaction.is_recurring === 'True')
+    );
+    
+    return matchingTransactions.map(t => t.RowKey);
+    
+  } catch (error) {
+    console.error('Error getting transaction IDs for template:', error);
+    return [];
+  }
+}
+
+// Close modals when clicking outside
 window.onclick = function(event) {
   const searchModal = document.getElementById('searchModal');
+  const recurringModal = document.getElementById('recurringModal');
   const accountSummaryModal = document.getElementById('accountSummaryModal');
   const deleteAccountModal = document.getElementById('deleteAccountModal');
   
   if (event.target === searchModal) {
     closeSearchModal();
+  } else if (event.target === recurringModal) {
+    closeRecurringModal();
   } else if (event.target === accountSummaryModal) {
     closeAccountSummaryModal();
   } else if (event.target === deleteAccountModal) {

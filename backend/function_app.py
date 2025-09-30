@@ -2251,6 +2251,219 @@ def create_recurring_transaction_for_date(recurring_config: Dict, target_date_st
         logging.error(f"Error creating recurring transaction for date {target_date_str}: {str(e)}")
         return False
 
+# Test endpoint for recurring transactions
+@app.route(route="recurring-test", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def test_recurring_api(req: func.HttpRequest) -> func.HttpResponse:
+    """Test endpoint for recurring transactions"""
+    try:
+        if req.method == "OPTIONS":
+            return func.HttpResponse("", status_code=200, headers=get_cors_headers())
+        
+        return func.HttpResponse(
+            json.dumps({"message": "Recurring transactions API is working", "status": "ok"}),
+            status_code=200,
+            headers=get_cors_headers()
+        )
+    except Exception as e:
+        logging.error(f"Error in test recurring API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error", "details": str(e)}),
+            status_code=500,
+            headers=get_cors_headers()
+        )
+
+# Get all recurring transactions for a user
+@app.route(route="recurring-transactions", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def get_recurring_transactions_api(req: func.HttpRequest) -> func.HttpResponse:
+    """API endpoint for getting all recurring transactions grouped by template"""
+    try:
+        # Handle CORS preflight requests
+        if req.method == "OPTIONS":
+            return func.HttpResponse(
+                "",
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        
+        # Get user ID using secure authentication
+        try:
+            user_id = get_user_id_from_request(req)
+        except ValueError as auth_error:
+            return func.HttpResponse(
+                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
+                status_code=401,
+                headers=get_cors_headers()
+            )
+        
+        # Get recurring transactions
+        try:
+            recurring_data = get_recurring_transactions_data(user_id)
+            
+            if "error" in recurring_data:
+                return func.HttpResponse(
+                    json.dumps({"error": recurring_data["error"]}),
+                    status_code=500,
+                    headers=get_cors_headers()
+                )
+            
+            return func.HttpResponse(
+                json.dumps(recurring_data),
+                status_code=200,
+                headers=get_cors_headers()
+            )
+        except Exception as data_error:
+            logging.error(f"Error in get_recurring_transactions_data: {str(data_error)}")
+            return func.HttpResponse(
+                json.dumps({"error": "Failed to get recurring transactions data", "details": str(data_error)}),
+                status_code=500,
+                headers=get_cors_headers()
+            )
+        
+    except Exception as e:
+        logging.error(f"Error in get recurring transactions API: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error", "details": str(e)}),
+            status_code=500,
+            headers=get_cors_headers()
+        )
+
+def get_recurring_transactions_data(user_id: str) -> Dict:
+    """Get all recurring transactions grouped by template"""
+    try:
+        logging.info(f"Getting recurring transactions for user: {user_id}")
+        
+        # Ensure tables exist
+        ensure_tables_exist()
+        
+        # Get all active accounts to filter transactions
+        active_accounts = get_user_accounts(user_id)
+        if not active_accounts:
+            logging.info("No active accounts found for user")
+            return {
+                "recurring_transactions": [],
+                "total_count": 0
+            }
+            
+        active_account_ids = {account['account_id'] for account in active_accounts}
+        account_names = {account['account_id']: account['account_name'] for account in active_accounts}
+        
+        logging.info(f"Found {len(active_accounts)} active accounts for user")
+        
+        table_client = get_table_client("Transactions")
+        entities = table_client.list_entities()
+        
+        logging.info("Successfully connected to Transactions table")
+        
+        # Get all recurring transactions for this user
+        all_transactions = [dict(entity) for entity in entities if entity.get('PartitionKey') == user_id]
+        logging.info(f"Found {len(all_transactions)} total transactions for user")
+        
+        recurring_transactions = [
+            transaction for transaction in all_transactions 
+            if ((transaction.get('is_recurring') == True or transaction.get('is_recurring') == 'True') and 
+                transaction.get('account_id') in active_account_ids)
+        ]
+        
+        logging.info(f"Found {len(recurring_transactions)} recurring transactions for user")
+        
+        if not recurring_transactions:
+            logging.info("No recurring transactions found")
+            return {
+                "recurring_transactions": [],
+                "total_count": 0
+            }
+        
+        # Group recurring transactions by template (same description, amount, category, account)
+        template_groups = {}
+        
+        try:
+            for transaction in recurring_transactions:
+                # Create a unique key for grouping
+                template_key = f"{transaction.get('description', '')}_{transaction.get('amount', 0)}_{transaction.get('category', '')}_{transaction.get('account_id', '')}"
+                
+                if template_key not in template_groups:
+                    template_groups[template_key] = {
+                        'template_id': template_key,
+                        'description': transaction.get('description', ''),
+                        'amount': float(transaction.get('amount', 0)),
+                        'category': transaction.get('category', ''),
+                        'transaction_type': transaction.get('transaction_type', ''),
+                        'account_id': transaction.get('account_id', ''),
+                        'account_name': account_names.get(transaction.get('account_id', ''), 'Unknown Account'),
+                        'frequency': transaction.get('recurring_frequency', 'monthly'),
+                        'start_date': transaction.get('recurring_start_date', ''),
+                        'occurrence_dates': [],
+                        'next_occurrence': None
+                    }
+                
+                # Add this occurrence date
+                transaction_date = transaction.get('transaction_date', '')
+                if transaction_date:
+                    template_groups[template_key]['occurrence_dates'].append(transaction_date)
+        except Exception as grouping_error:
+            logging.error(f"Error grouping recurring transactions: {str(grouping_error)}")
+            # Return a simple list if grouping fails
+            return {
+                "recurring_transactions": [],
+                "total_count": 0,
+                "error": "Failed to group recurring transactions"
+            }
+        
+        # Process each template group
+        recurring_templates = []
+        try:
+            for template_key, template_data in template_groups.items():
+                # Sort occurrence dates
+                template_data['occurrence_dates'].sort()
+                
+                # Calculate next occurrence
+                if template_data['occurrence_dates']:
+                    try:
+                        last_date = datetime.strptime(template_data['occurrence_dates'][-1], '%Y-%m-%d').date()
+                        frequency = template_data['frequency']
+                        
+                        if frequency == 'monthly':
+                            # Add one month to last occurrence
+                            if last_date.month == 12:
+                                next_date = last_date.replace(year=last_date.year + 1, month=1)
+                            else:
+                                next_date = last_date.replace(month=last_date.month + 1)
+                        elif frequency == 'yearly':
+                            # Add one year to last occurrence
+                            next_date = last_date.replace(year=last_date.year + 1)
+                        else:
+                            next_date = None
+                        
+                        template_data['next_occurrence'] = next_date.strftime('%Y-%m-%d') if next_date else None
+                    except Exception as date_error:
+                        logging.warning(f"Error calculating next occurrence for template {template_key}: {str(date_error)}")
+                        template_data['next_occurrence'] = None
+                
+                recurring_templates.append(template_data)
+            
+            # Sort templates by description
+            recurring_templates.sort(key=lambda x: x['description'])
+            
+            logging.info(f"Successfully processed {len(recurring_templates)} recurring transaction templates")
+            
+            return {
+                "recurring_transactions": recurring_templates,
+                "total_count": len(recurring_templates)
+            }
+        except Exception as processing_error:
+            logging.error(f"Error processing recurring transaction templates: {str(processing_error)}")
+            return {
+                "recurring_transactions": [],
+                "total_count": 0,
+                "error": "Failed to process recurring transaction templates"
+            }
+        
+    except Exception as e:
+        logging.error(f"Error getting recurring transactions: {str(e)}")
+        if handle_first_time_user_error(str(e), user_id, "get_recurring_transactions"):
+            return {"recurring_transactions": [], "total_count": 0, "error": "No recurring transactions found"}
+        raise e
+
 # Manual trigger endpoint for testing recurring transactions
 @app.route(route="recurring/process", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 def manual_recurring_process_api(req: func.HttpRequest) -> func.HttpResponse:
