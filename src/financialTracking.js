@@ -10,6 +10,15 @@ document.addEventListener('DOMContentLoaded', function() {
   initializePage();
 });
 
+// Refresh data when page becomes visible (e.g., when navigating back from accounts page)
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden) {
+    console.log('🔄 Page became visible, refreshing data...');
+    // Force refresh of financial summary to get latest data
+    loadUserData();
+  }
+});
+
 async function initializePage() {
   try {
     // Log API configuration for debugging
@@ -320,6 +329,11 @@ document.getElementById('createAccountForm').addEventListener('submit', async fu
       const newAccount = await response.json();
       userAccounts.push(newAccount);
       
+      // Invalidate cache after successful account creation
+      if (window.cacheInvalidation) {
+        window.cacheInvalidation.invalidateUserData();
+      }
+      
       showMessage('Bank account created successfully!', 'success');
       closeCreateAccountModal();
       updateDashboard();
@@ -380,6 +394,13 @@ document.getElementById('addTransactionForm').addEventListener('submit', async f
     });
     
     if (response.ok) {
+      // Invalidate cache BEFORE updating local data
+      if (window.cacheInvalidation) {
+        console.log('🗑️ Invalidating cache after transaction creation');
+        window.cacheInvalidation.invalidateTransactionData();
+        window.cacheInvalidation.invalidateUserData(); // Also invalidate user data for financial summary
+      }
+      
       const newTransaction = await response.json();
       recentTransactions.unshift(newTransaction);
       
@@ -392,6 +413,9 @@ document.getElementById('addTransactionForm').addEventListener('submit', async f
           account.current_balance -= transactionData.amount;
         }
       }
+      
+      // Force refresh of financial summary to get updated totals
+      await loadUserData();
       
       if (isRecurring) {
         showMessage('Recurring transaction added successfully! Historical transactions have been created.', 'success');

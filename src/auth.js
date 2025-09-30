@@ -78,8 +78,40 @@ function signIn() {
     });
 };
   
-// Secure API request function
+// Secure API request function with caching
 async function makeAuthenticatedRequest(url, options = {}) {
+  const method = options.method || 'GET';
+  const cacheKey = `${method}_${url}`;
+  
+  // Debug logging (only for GET requests)
+  if (method === 'GET' && window.cacheDebug) {
+    console.log(`🔍 API Request: ${method} ${url}`);
+    console.log(`🔑 Cache Key: ${cacheKey}`);
+    console.log(`📦 Cache Available: ${!!window.dataCache}`);
+  }
+  
+  // Check cache for GET requests only
+  if (method === 'GET' && window.dataCache) {
+    console.log(`🔍 Checking cache for: ${cacheKey}`);
+    const cached = window.dataCache.get(cacheKey);
+    if (cached) {
+      console.log(`✅ Cache HIT: ${cacheKey} - returning cached data`);
+      // Return a response-like object that mimics fetch response
+      return {
+        ok: cached.ok,
+        status: cached.status,
+        statusText: cached.statusText,
+        json: async () => cached.data,
+        text: async () => JSON.stringify(cached.data),
+        headers: new Headers(cached.headers || {})
+      };
+    } else {
+      console.log(`❌ Cache MISS: ${cacheKey} - making API call`);
+    }
+  } else {
+    console.log(`⏭️ Skipping cache: method=${method}, cacheAvailable=${!!window.dataCache}`);
+  }
+  
   try {
     const account = window.msalInstance.getAllAccounts()[0];
     if (!account) {
@@ -105,10 +137,32 @@ async function makeAuthenticatedRequest(url, options = {}) {
       ...options.headers
     };
     
-    return fetch(url, {
+    const response = await fetch(url, {
       ...options,
       headers
     });
+    
+    // Cache successful GET responses
+    if (method === 'GET' && response.ok && window.dataCache) {
+      try {
+        const data = await response.clone().json();
+        console.log(`💾 Caching response: ${cacheKey}`);
+        window.dataCache.set(cacheKey, {
+          ok: response.ok,
+          status: response.status,
+          statusText: response.statusText,
+          data: data,
+          headers: Object.fromEntries(response.headers.entries())
+        });
+        console.log(`✅ Cache stored: ${cacheKey}`);
+      } catch (jsonError) {
+        console.warn('Failed to cache response (not JSON):', jsonError);
+      }
+    } else {
+      console.log(`⏭️ Not caching: method=${method}, ok=${response.ok}, cacheAvailable=${!!window.dataCache}`);
+    }
+    
+    return response;
   } catch (error) {
     console.error('Error making authenticated request:', error);
     
@@ -125,10 +179,36 @@ async function makeAuthenticatedRequest(url, options = {}) {
           ...options.headers
         };
         
-        return fetch(url, {
+        const response = await fetch(url, {
           ...options,
           headers
         });
+        
+        // Cache successful GET responses
+        if (method === 'GET' && response.ok && window.dataCache) {
+          try {
+            const data = await response.clone().json();
+            if (window.cacheDebug) {
+              console.log(`💾 Caching response (popup): ${cacheKey}`);
+            }
+            window.dataCache.set(cacheKey, {
+              ok: response.ok,
+              status: response.status,
+              statusText: response.statusText,
+              data: data,
+              headers: Object.fromEntries(response.headers.entries())
+            });
+            if (window.cacheDebug) {
+              console.log(`✅ Cache stored (popup): ${cacheKey}`);
+            }
+          } catch (jsonError) {
+            console.warn('Failed to cache response (not JSON):', jsonError);
+          }
+        } else if (window.cacheDebug) {
+          console.log(`⏭️ Not caching (popup): method=${method}, ok=${response.ok}, cacheAvailable=${!!window.dataCache}`);
+        }
+        
+        return response;
       } catch (popupError) {
         console.error('Error acquiring token via popup:', popupError);
         throw popupError;
