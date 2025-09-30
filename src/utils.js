@@ -59,6 +59,12 @@ function formatTransactionDate(dateString) {
 
 // Sign out functionality
 function handleSignOut() {
+  // Clear cache before signing out for security
+  if (window.dataCache) {
+    console.log('🧹 Clearing cache on sign out for security');
+    window.dataCache.clear();
+  }
+  
   if (window.msalInstance) {
     window.msalInstance.logout();
     localStorage.clear();

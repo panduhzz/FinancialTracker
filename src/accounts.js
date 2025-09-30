@@ -13,6 +13,15 @@ document.addEventListener('DOMContentLoaded', function() {
   initializePage();
 });
 
+// Refresh data when page becomes visible (e.g., when navigating back from financial tracking page)
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden) {
+    console.log('🔄 Page became visible, refreshing data...');
+    // Force refresh of data to get latest information
+    loadUserData();
+  }
+});
+
 async function initializePage() {
   try {
     // Log API configuration for debugging
@@ -389,6 +398,14 @@ async function deleteTransaction(transactionId, accountId) {
       const result = await response.json();
       showMessage('Transaction deleted successfully!', 'success');
       
+      // Invalidate cache after successful deletion
+      if (window.cacheInvalidation) {
+        console.log('🗑️ Invalidating cache after transaction deletion');
+        window.cacheInvalidation.invalidateTransactionData();
+        window.cacheInvalidation.invalidateUserData(); // Also invalidate user data for financial summary
+        window.cacheInvalidation.invalidateAccountData(accountId); // Invalidate specific account data
+      }
+      
       // Store which accounts were expanded before refreshing
       const expandedAccountIds = Array.from(expandedAccounts);
       
@@ -453,6 +470,11 @@ async function deleteAccount() {
       const result = await response.json();
       console.log('Delete result:', result);
       showMessage(result.message || 'Account deleted successfully!', 'success');
+      
+      // Invalidate cache after successful deletion
+      if (window.cacheInvalidation) {
+        window.cacheInvalidation.invalidateUserData();
+      }
       
       // Close the modal
       closeDeleteAccountModal();
