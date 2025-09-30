@@ -35,13 +35,11 @@ class DataCache {
       if (storedCache) {
         const cacheData = JSON.parse(storedCache);
         this.cache = new Map(Object.entries(cacheData));
-        console.log(`📦 Loaded ${this.cache.size} cache entries from localStorage`);
       }
       
       if (storedTimestamps) {
         const timestampData = JSON.parse(storedTimestamps);
         this.cacheTimestamps = new Map(Object.entries(timestampData));
-        console.log(`⏰ Loaded ${this.cacheTimestamps.size} cache timestamps from localStorage`);
       }
       
       // Clean up expired entries on load
@@ -64,7 +62,6 @@ class DataCache {
       localStorage.setItem(this.storageKey, JSON.stringify(cacheData));
       localStorage.setItem(this.timestampsKey, JSON.stringify(timestampData));
       
-      console.log(`💾 Saved ${this.cache.size} cache entries to localStorage`);
     } catch (error) {
       console.warn('Failed to save cache to localStorage:', error);
     }
@@ -105,7 +102,6 @@ class DataCache {
     });
     
     if (keysToDelete.length > 0 && window.cacheDebug) {
-      console.log(`🧹 Cleaned up ${keysToDelete.length} expired cache entries`);
     }
   }
 
@@ -129,7 +125,6 @@ class DataCache {
     // Save to localStorage
     this.saveToStorage();
     
-    console.log(`💾 Cache SET: ${key} (TTL: ${actualTTL}ms, Size: ${this.cache.size})`);
   }
 
   /**
@@ -153,7 +148,6 @@ class DataCache {
       this.cacheTimestamps.delete(oldestKey);
       
       if (window.cacheDebug) {
-        console.log(`🗑️ Evicted oldest cache entry: ${oldestKey}`);
       }
     }
   }
@@ -164,10 +158,8 @@ class DataCache {
    * @returns {any|null} Cached data or null if expired/not found
    */
   get(key) {
-    console.log(`🔍 Cache GET: ${key} (cache size: ${this.cache.size})`);
     
     if (!this.cache.has(key)) {
-      console.log(`❌ Cache MISS: ${key} (not found)`);
       return null;
     }
     
@@ -175,11 +167,9 @@ class DataCache {
     if (Date.now() > expiry) {
       this.cache.delete(key);
       this.cacheTimestamps.delete(key);
-      console.log(`❌ Cache MISS: ${key} (expired)`);
       return null;
     }
     
-    console.log(`✅ Cache HIT: ${key}`);
     return this.cache.get(key);
   }
 
@@ -203,7 +193,6 @@ class DataCache {
     // Save to localStorage after invalidation
     if (keysToDelete.length > 0) {
       this.saveToStorage();
-      console.log(`🗑️ Cache INVALIDATED: ${keysToDelete.length} entries matching "${pattern}"`);
     }
   }
 
@@ -218,7 +207,6 @@ class DataCache {
     localStorage.removeItem(this.storageKey);
     localStorage.removeItem(this.timestampsKey);
     
-    console.log('🗑️ Cache CLEARED: All entries removed from memory and localStorage');
   }
 
   /**
@@ -238,28 +226,15 @@ class DataCache {
 window.dataCache = new DataCache();
 
 // Debug: Confirm cache initialization
-console.log('🚀 Cache initialized:', !!window.dataCache);
-console.log('📊 Cache stats:', window.dataCache.getStats());
-console.log('💾 Cache persistence: localStorage enabled');
 
 // Add cache status function for easy debugging
 window.getCacheStatus = () => {
   const stats = window.dataCache.getStats();
-  console.log('📊 Cache Status:', {
-    size: stats.size,
-    keys: stats.keys,
-    memoryUsage: stats.memoryUsage
-  });
   return stats;
 };
 
 // Add function to check cache directly
 window.checkCache = () => {
-  console.log('🔍 Cache Data:', {
-    memorySize: window.dataCache.cache.size,
-    memoryKeys: Array.from(window.dataCache.cache.keys()),
-    timestamps: Array.from(window.dataCache.cacheTimestamps.entries())
-  });
   
   return {
     memoryCache: Array.from(window.dataCache.cache.entries()),
@@ -271,7 +246,6 @@ window.checkCache = () => {
 window.cacheInvalidation = {
   // Invalidate all user data after account changes
   invalidateUserData() {
-    console.log('🗑️ Invalidating user data cache');
     window.dataCache.invalidate('/api/accounts');
     window.dataCache.invalidate('/api/financial-summary');
     window.dataCache.invalidate('/api/transactions');
@@ -280,7 +254,6 @@ window.cacheInvalidation = {
 
   // Invalidate account-specific data
   invalidateAccountData(accountId) {
-    console.log(`🗑️ Invalidating account data cache for account ${accountId}`);
     window.dataCache.invalidate(`/api/accounts/summary/${accountId}`);
     window.dataCache.invalidate('/api/accounts');
     window.dataCache.invalidate('/api/financial-summary');
@@ -288,10 +261,17 @@ window.cacheInvalidation = {
 
   // Invalidate transaction data
   invalidateTransactionData() {
-    console.log('🗑️ Invalidating transaction data cache');
     window.dataCache.invalidate('/api/transactions');
     window.dataCache.invalidate('/api/financial-summary');
     window.dataCache.invalidate('/api/analytics');
+  },
+
+  // Invalidate recurring transactions data
+  invalidateRecurringTransactions() {
+    window.dataCache.invalidate('/api/recurring-transactions');
+    window.dataCache.invalidate('/api/transactions');
+    window.dataCache.invalidate('/api/accounts');
+    window.dataCache.invalidate('/api/financial-summary');
   }
 };
 
@@ -299,19 +279,16 @@ window.cacheInvalidation = {
 window.cacheDebug = true; // Enable by default for testing
 window.enableCacheDebug = () => {
   window.cacheDebug = true;
-  console.log('Cache debugging enabled');
 };
 
 window.disableCacheDebug = () => {
   window.cacheDebug = false;
-  console.log('Cache debugging disabled');
 };
 
 // Manual cache clearing for testing
 window.clearAllCache = () => {
   if (window.dataCache) {
     window.dataCache.clear();
-    console.log('🧹 Manual cache clear completed');
   }
 };
 
@@ -319,7 +296,6 @@ window.clearAllCache = () => {
 window.forceRefreshAllData = () => {
   if (window.dataCache) {
     window.dataCache.clear();
-    console.log('🔄 Forcing refresh of all data...');
     
     // Reload the page to force fresh data fetch
     if (typeof window.location !== 'undefined') {

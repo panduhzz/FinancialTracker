@@ -748,6 +748,191 @@ body.modal-open {
   margin-right: 10px;
 }
 
+/* Recurring Transactions Modal Styles */
+.recurring-modal {
+  max-width: 900px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.recurring-loading {
+  text-align: center;
+  padding: 40px 20px;
+  color: #666;
+}
+
+.recurring-loading::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #e1e5e9;
+  border-top: 2px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 10px;
+}
+
+.recurring-transactions-list {
+  max-height: 500px;
+  overflow-y: auto;
+  border: 1px solid #e1e5e9;
+  border-radius: 8px;
+  background: #f8f9fa;
+  scroll-behavior: smooth;
+}
+
+.recurring-transaction-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border-left: 4px solid #667eea;
+  margin-bottom: 10px;
+  transition: background-color 0.2s ease;
+}
+
+.recurring-transaction-item:hover {
+  background-color: #e9ecef;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.recurring-transaction-item:last-child {
+  margin-bottom: 0;
+}
+
+.recurring-transaction-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.recurring-transaction-description {
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 3px;
+}
+
+.recurring-transaction-details {
+  color: #666;
+  font-size: 0.85em;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.recurring-transaction-account {
+  background: #667eea;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8em;
+  font-weight: 500;
+}
+
+.recurring-transaction-frequency {
+  background: #28a745;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8em;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.recurring-transaction-dates {
+  margin-top: 5px;
+  font-size: 0.8em;
+  color: #666;
+}
+
+.recurring-dates-title {
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 3px;
+  font-size: 0.8em;
+}
+
+.recurring-dates-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.recurring-date-badge {
+  background: #e3f2fd;
+  color: #1976d2;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 0.75em;
+  font-weight: 500;
+  border: 1px solid #bbdefb;
+}
+
+.recurring-next-occurrence {
+  background: #fff3cd;
+  color: #856404;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 0.75em;
+  font-weight: 500;
+  border: 1px solid #ffeaa7;
+}
+
+.recurring-transaction-amount {
+  font-weight: bold;
+  font-size: 1em;
+}
+
+.recurring-transaction-amount.income {
+  color: #28a745;
+}
+
+.recurring-transaction-amount.expense {
+  color: #dc3545;
+}
+
+.recurring-transaction-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.recurring-no-transactions {
+  text-align: center;
+  padding: 60px 20px;
+  color: #666;
+}
+
+.recurring-no-transactions h4 {
+  color: #333;
+  margin-bottom: 10px;
+  font-size: 1.2em;
+}
+
+.recurring-no-transactions p {
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+.recurring-error {
+  text-align: center;
+  padding: 40px 20px;
+  color: #dc3545;
+}
+
+.recurring-error h4 {
+  color: #dc3545;
+  margin-bottom: 10px;
+}
+
 /* Responsive Design for Search Modal */
 @media (max-width: 768px) {
   .search-modal {
@@ -771,6 +956,28 @@ body.modal-open {
   
   .search-result-actions {
     width: 100%;
+    justify-content: flex-end;
+  }
+  
+  /* Recurring Modal Responsive */
+  .recurring-modal {
+    width: 95%;
+    max-width: none;
+  }
+  
+  .recurring-transaction-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .recurring-transaction-amount {
+    text-align: left;
+  }
+  
+  .recurring-transaction-actions {
+    width: 100%;
+    flex-direction: row;
     justify-content: flex-end;
   }
 }
