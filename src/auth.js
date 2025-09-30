@@ -38,8 +38,6 @@ window.addEventListener('load', function() {
   // Add event callback AFTER msalInstance is created
   window.msalInstance.addEventCallback((message) => {
     if (message.eventType === msal.EventType.LOGIN_SUCCESS) {
-      console.log("Account added:", message.payload);
-      console.log("payload:" + message.payload);
     }
     //can add else if statements for different EventTypes. Don't see a need at the moment for other ones.
   });
@@ -60,14 +58,10 @@ function signIn() {
   window.msalInstance.loginPopup(loginRequest)
     .then(response => {
       // Handle successful login
-      console.log('Login successful!', response);
       // You can store user information or tokens here
       const account = response.account;
-      console.log(account);
       const familyName = account.idTokenClaims.family_name;
-      console.log(familyName);
       const givenName = account.idTokenClaims.given_name;
-      console.log(givenName);
       
       // Redirect immediately to login page using environment-based navigation
       window.location.replace(window.getNavigationUrl('/login', '/loggedIn.html'));
@@ -85,17 +79,12 @@ async function makeAuthenticatedRequest(url, options = {}) {
   
   // Debug logging (only for GET requests)
   if (method === 'GET' && window.cacheDebug) {
-    console.log(`🔍 API Request: ${method} ${url}`);
-    console.log(`🔑 Cache Key: ${cacheKey}`);
-    console.log(`📦 Cache Available: ${!!window.dataCache}`);
   }
   
   // Check cache for GET requests only
   if (method === 'GET' && window.dataCache) {
-    console.log(`🔍 Checking cache for: ${cacheKey}`);
     const cached = window.dataCache.get(cacheKey);
     if (cached) {
-      console.log(`✅ Cache HIT: ${cacheKey} - returning cached data`);
       // Return a response-like object that mimics fetch response
       return {
         ok: cached.ok,
@@ -106,10 +95,8 @@ async function makeAuthenticatedRequest(url, options = {}) {
         headers: new Headers(cached.headers || {})
       };
     } else {
-      console.log(`❌ Cache MISS: ${cacheKey} - making API call`);
     }
   } else {
-    console.log(`⏭️ Skipping cache: method=${method}, cacheAvailable=${!!window.dataCache}`);
   }
   
   try {
@@ -125,7 +112,6 @@ async function makeAuthenticatedRequest(url, options = {}) {
         scopes: ['https://PanduhzProject.onmicrosoft.com/api://e8c1227e-f95c-4a0a-bf39-f3ce4c78c781/access_as_user'],
         account: account
       });
-      console.log('Successfully acquired token with API scope');
     } catch (error) {
       console.error('Failed to acquire token with API scope:', error);
       throw error;
@@ -146,7 +132,6 @@ async function makeAuthenticatedRequest(url, options = {}) {
     if (method === 'GET' && response.ok && window.dataCache) {
       try {
         const data = await response.clone().json();
-        console.log(`💾 Caching response: ${cacheKey}`);
         window.dataCache.set(cacheKey, {
           ok: response.ok,
           status: response.status,
@@ -154,12 +139,10 @@ async function makeAuthenticatedRequest(url, options = {}) {
           data: data,
           headers: Object.fromEntries(response.headers.entries())
         });
-        console.log(`✅ Cache stored: ${cacheKey}`);
       } catch (jsonError) {
         console.warn('Failed to cache response (not JSON):', jsonError);
       }
     } else {
-      console.log(`⏭️ Not caching: method=${method}, ok=${response.ok}, cacheAvailable=${!!window.dataCache}`);
     }
     
     return response;
@@ -189,7 +172,6 @@ async function makeAuthenticatedRequest(url, options = {}) {
           try {
             const data = await response.clone().json();
             if (window.cacheDebug) {
-              console.log(`💾 Caching response (popup): ${cacheKey}`);
             }
             window.dataCache.set(cacheKey, {
               ok: response.ok,
@@ -199,13 +181,11 @@ async function makeAuthenticatedRequest(url, options = {}) {
               headers: Object.fromEntries(response.headers.entries())
             });
             if (window.cacheDebug) {
-              console.log(`✅ Cache stored (popup): ${cacheKey}`);
             }
           } catch (jsonError) {
             console.warn('Failed to cache response (not JSON):', jsonError);
           }
         } else if (window.cacheDebug) {
-          console.log(`⏭️ Not caching (popup): method=${method}, ok=${response.ok}, cacheAvailable=${!!window.dataCache}`);
         }
         
         return response;
@@ -223,7 +203,6 @@ async function makeAuthenticatedRequest(url, options = {}) {
   /*
   const currentAccounts = msalInstance.getAllAccounts();
   if (currentAccounts && currentAccounts.length > 0) {
-    console.log('User is already logged in.');
     updateUIAfterLogin(currentAccounts[0]);
   } */
   
