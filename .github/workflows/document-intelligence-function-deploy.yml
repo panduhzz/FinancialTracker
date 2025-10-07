@@ -10,8 +10,8 @@ on:
 env:
   RESOURCE_GROUP_NAME: 'PanduhzDocumentIntelligence'
   FUNCTION_APP_NAME: 'document-intelligence-function'
-  STORAGE_ACCOUNT_NAME: 'docintelstorage'
-  LOCATION: 'East US'
+  STORAGE_ACCOUNT_NAME: 'panduhzdocintelstorage'
+  LOCATION: 'West US2'
   PYTHON_VERSION: '3.11'
 
 jobs:
