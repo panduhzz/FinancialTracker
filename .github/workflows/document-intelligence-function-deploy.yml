@@ -73,6 +73,7 @@ jobs:
                 --runtime python \
                 --runtime-version ${{ env.PYTHON_VERSION }} \
                 --functions-version 4 \
+                --os-type Linux \
                 --name ${{ env.FUNCTION_APP_NAME }} \
                 --storage-account ${{ env.STORAGE_ACCOUNT_NAME }}
             fi
