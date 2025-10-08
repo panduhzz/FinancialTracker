@@ -113,20 +113,11 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Debug package contents
+      - name: Build Dependencies Locally
         run: |
             cd backend_upload
-            echo "=== Validating requirements.txt ==="
-            # Test if packages can be installed
-            pip install -r requirements.txt
-            echo "=== Testing imports ==="
-            python -c "from azure.core.credentials import AzureKeyCredential; print('✓ azure.core import successful')"
-            python -c "import azure.functions; print('✓ azure.functions import successful')"
+            pip install -r requirements.txt --target .python_packages/lib/site-packages
       
-      - name: Install dependencies
-        run: |
-          cd backend_upload
-          pip install -r requirements.txt
       
       - name: Deploy to Azure Functions
         uses: Azure/functions-action@v1
@@ -134,5 +125,4 @@ jobs:
           app-name: ${{ env.FUNCTION_APP_NAME }}
           package: './backend_upload'
           publish-profile: ${{ secrets.AZURE_DIFUNCTIONAPP_PUBLISH_PROFILE }}
-          scm-do-build-during-deployment: true
-          enable-oryx-build: true
+          scm-do-build-during-deployment: false
