@@ -5,4 +5,5 @@
 azure-functions
 azure-ai-documentintelligence>=1.0.1
 azure-storage-blob
+azure-core  
 python-dotenv
