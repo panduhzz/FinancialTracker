@@ -117,7 +117,6 @@ jobs:
         run: |
             cd backend_upload
             pip install -r requirements.txt --target .python_packages/lib/site-packages
-            zip -r function.zip . 
       
       
       - name: Deploy to Azure Functions
