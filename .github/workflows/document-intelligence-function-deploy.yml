@@ -116,12 +116,12 @@ jobs:
       - name: Debug package contents
         run: |
             cd backend_upload
-            echo "=== Files in backend_upload ==="
-            ls -la
-            echo "=== requirements.txt content ==="
-            cat requirements.txt
-            echo "=== Python version ==="
-            python --version
+            echo "=== Validating requirements.txt ==="
+            # Test if packages can be installed
+            pip install -r requirements.txt
+            echo "=== Testing imports ==="
+            python -c "from azure.core.credentials import AzureKeyCredential; print('✓ azure.core import successful')"
+            python -c "import azure.functions; print('✓ azure.functions import successful')"
       
       - name: Install dependencies
         run: |
