@@ -112,6 +112,16 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Debug package contents
+        run: |
+            cd backend_upload
+            echo "=== Files in backend_upload ==="
+            ls -la
+            echo "=== requirements.txt content ==="
+            cat requirements.txt
+            echo "=== Python version ==="
+            python --version
       
       - name: Install dependencies
         run: |
