@@ -108,15 +108,6 @@ jobs:
               --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
               --allowed-origins "https://panduhzco.com"
       
-      - name: Get Function App Publish Profile
-        id: publishprofile
-        uses: aliencube/publish-profile-actions@v1
-        env:
-          AZURE_CREDENTIALS: ${{ secrets.AZURE_RBAC_CREDENTIALS }}
-        with:
-          resourceGroupName: ${{ env.RESOURCE_GROUP_NAME }}
-          appName: ${{ env.FUNCTION_APP_NAME }}
-      
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
@@ -132,6 +123,6 @@ jobs:
         with:
           app-name: ${{ env.FUNCTION_APP_NAME }}
           package: './backend_upload'
-          publish-profile: ${{ steps.publishprofile.outputs.profile }}
+          publish-profile: ${{ secrets.AZURE_DIFUNCTIONAPP_PUBLISH_PROFILE }}
           scm-do-build-during-deployment: true
           enable-oryx-build: true
