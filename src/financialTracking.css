@@ -458,6 +458,170 @@ body {
   color: #dc3545;
 }
 
+/* Upload modal styles */
+.upload-area {
+  border: 2px dashed #667eea;
+  border-radius: 10px;
+  padding: 30px;
+  text-align: center;
+  margin-bottom: 20px;
+  background-color: #f8f9fa;
+  transition: all 0.3s ease;
+}
+
+.upload-area:hover {
+  background-color: #e9ecef;
+  border-color: #5a6fd8;
+}
+
+.upload-area h3 {
+  color: #333;
+  margin-bottom: 10px;
+  font-size: 1.3em;
+}
+
+.upload-area p {
+  color: #666;
+  margin-bottom: 20px;
+  font-size: 0.95em;
+}
+
+.upload-area input[type="file"] {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  background: white;
+  font-size: 1em;
+  cursor: pointer;
+}
+
+.file-info {
+  background: #e3f2fd;
+  border: 1px solid #bbdefb;
+  border-radius: 5px;
+  padding: 15px;
+  margin-top: 15px;
+  text-align: left;
+}
+
+.file-info p {
+  margin: 5px 0;
+  color: #1976d2;
+  font-size: 0.9em;
+}
+
+.upload-options {
+  margin: 20px 0;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.upload-options small {
+  color: #666;
+  font-size: 0.85em;
+  margin-top: 5px;
+  display: block;
+}
+
+.upload-results {
+  margin-top: 20px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.upload-results h3 {
+  color: #333;
+  margin-bottom: 15px;
+  font-size: 1.2em;
+}
+
+.upload-field {
+  margin: 10px 0;
+  padding: 10px;
+  background: white;
+  border-radius: 5px;
+  border-left: 4px solid #667eea;
+}
+
+.upload-field-label {
+  font-weight: bold;
+  color: #333;
+  font-size: 0.9em;
+}
+
+.upload-field-value {
+  color: #666;
+  margin-top: 5px;
+  font-size: 0.9em;
+}
+
+.upload-transactions {
+  margin-top: 15px;
+}
+
+.upload-transaction {
+  background: white;
+  margin: 8px 0;
+  padding: 12px;
+  border-radius: 5px;
+  border-left: 4px solid #28a745;
+}
+
+.upload-transaction-header {
+  font-weight: bold;
+  color: #333;
+  font-size: 0.9em;
+}
+
+.upload-transaction-details {
+  color: #666;
+  margin-top: 5px;
+  font-size: 0.85em;
+}
+
+.upload-error {
+  color: #dc3545;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  padding: 10px;
+  border-radius: 5px;
+  margin: 10px 0;
+  font-size: 0.9em;
+}
+
+.upload-success {
+  color: #155724;
+  background-color: #d4edda;
+  border: 1px solid #c3e6cb;
+  padding: 10px;
+  border-radius: 5px;
+  margin: 10px 0;
+  font-size: 0.9em;
+}
+
+.upload-loading {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+}
+
+.upload-loading::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #e1e5e9;
+  border-top: 2px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 10px;
+}
+
 /* Recurring transaction styles */
 #recurringOptions {
   background: #f8f9fa;
