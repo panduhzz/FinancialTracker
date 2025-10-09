@@ -444,17 +444,253 @@ function viewAllAccounts() {
   window.location.href = window.getNavigationUrl('/accounts', '/accounts.html');
 }
 
+// Upload Modal Functions
+function openUploadModal() {
+  document.getElementById('uploadModal').style.display = 'block';
+  
+  // Populate account select
+  populateUploadAccountSelect();
+  
+  // Reset form
+  document.getElementById('statementFile').value = '';
+  document.getElementById('fileInfo').style.display = 'none';
+  document.getElementById('uploadResults').style.display = 'none';
+  document.getElementById('processBtn').disabled = true;
+  
+  // Prevent background scrolling
+  document.body.style.overflow = 'hidden';
+}
+
+function closeUploadModal() {
+  document.getElementById('uploadModal').style.display = 'none';
+  
+  // Restore background scrolling
+  document.body.style.overflow = 'auto';
+}
+
+function populateUploadAccountSelect() {
+  const select = document.getElementById('targetAccount');
+  select.innerHTML = '<option value="">Auto-detect or create new account</option>';
+  
+  userAccounts.forEach(account => {
+    const option = document.createElement('option');
+    option.value = account.account_id;
+    option.textContent = `${account.account_name} (${account.account_type}) - $${account.current_balance.toFixed(2)}`;
+    select.appendChild(option);
+  });
+}
+
+// File selection handler
+document.addEventListener('DOMContentLoaded', function() {
+  const fileInput = document.getElementById('statementFile');
+  if (fileInput) {
+    fileInput.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        // Show file info
+        document.getElementById('fileName').textContent = file.name;
+        document.getElementById('fileSize').textContent = formatFileSize(file.size);
+        document.getElementById('fileInfo').style.display = 'block';
+        document.getElementById('processBtn').disabled = false;
+      } else {
+        document.getElementById('fileInfo').style.display = 'none';
+        document.getElementById('processBtn').disabled = true;
+      }
+    });
+  }
+});
+
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+async function getAuthToken() {
+  try {
+    const account = window.msalInstance.getAllAccounts()[0];
+    if (!account) {
+      throw new Error('User not authenticated');
+    }
+    
+    const tokenResponse = await window.msalInstance.acquireTokenSilent({
+      scopes: ['https://PanduhzProject.onmicrosoft.com/api://e8c1227e-f95c-4a0a-bf39-f3ce4c78c781/access_as_user'],
+      account: account
+    });
+    
+    return tokenResponse.accessToken;
+  } catch (error) {
+    console.error('Error getting auth token:', error);
+    throw error;
+  }
+}
+
+async function processStatement() {
+  const fileInput = document.getElementById('statementFile');
+  const targetAccount = document.getElementById('targetAccount').value;
+  const processBtn = document.getElementById('processBtn');
+  const resultsDiv = document.getElementById('uploadResults');
+  const resultsContent = document.getElementById('uploadResultsContent');
+  
+  if (!fileInput.files[0]) {
+    showMessage('Please select a file first', 'error');
+    return;
+  }
+  
+  try {
+    // Show loading state
+    processBtn.disabled = true;
+    processBtn.textContent = 'Processing...';
+    resultsDiv.style.display = 'block';
+    resultsContent.innerHTML = '<div class="upload-loading">Processing your bank statement...</div>';
+    
+    // Create form data
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    if (targetAccount) {
+      formData.append('target_account_id', targetAccount);
+    }
+    
+    // Make API request to document processing endpoint
+    // Using the centralized upload API configuration
+    const response = await fetch(`${API_CONFIG.getUploadApiUrl()}/financialUpload`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Authorization': `Bearer ${await getAuthToken()}`
+      }
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      displayUploadResults(result);
+      
+      // Invalidate cache to refresh data
+      if (window.cacheInvalidation) {
+        window.cacheInvalidation.invalidateUserData();
+        window.cacheInvalidation.invalidateTransactionData();
+      }
+      
+      // Refresh the page data
+      await loadUserData();
+      
+    } else {
+      const error = await response.json();
+      resultsContent.innerHTML = `<div class="upload-error">Error: ${error.error || 'Failed to process statement'}</div>`;
+    }
+    
+  } catch (error) {
+    console.error('Error processing statement:', error);
+    resultsContent.innerHTML = `<div class="upload-error">Error: ${error.message}</div>`;
+  } finally {
+    processBtn.disabled = false;
+    processBtn.textContent = 'Process Statement';
+  }
+}
+
+function displayUploadResults(data) {
+  const resultsContent = document.getElementById('uploadResultsContent');
+  let html = '';
+  
+  if (data.error) {
+    html = `<div class="upload-error">Error: ${data.error}</div>`;
+  } else {
+    // Show success message
+    html += `<div class="upload-success">Statement processed successfully!</div>`;
+    
+    // Show integration status message if available
+    if (data.integration_message) {
+      html += `<div class="upload-field">
+        <div class="upload-field-label">Status</div>
+        <div class="upload-field-value">${data.integration_message}</div>
+      </div>`;
+    }
+    
+    // Account Information
+    if (data.account_number) {
+      html += `<div class="upload-field">
+        <div class="upload-field-label">Account Number</div>
+        <div class="upload-field-value">${data.account_number}</div>
+      </div>`;
+    }
+    
+    if (data.starting_balance !== null && data.starting_balance !== undefined) {
+      html += `<div class="upload-field">
+        <div class="upload-field-label">Starting Balance</div>
+        <div class="upload-field-value">$${data.starting_balance.toFixed(2)}</div>
+      </div>`;
+    }
+    
+    if (data.ending_balance !== null && data.ending_balance !== undefined) {
+      html += `<div class="upload-field">
+        <div class="upload-field-label">Ending Balance</div>
+        <div class="upload-field-value">$${data.ending_balance.toFixed(2)}</div>
+      </div>`;
+    }
+    
+    // Transactions
+    if (data.transactions && data.transactions.length > 0) {
+      html += `<div class="upload-transactions">
+        <h4>Transactions Found (${data.transactions.length})</h4>`;
+      
+      data.transactions.forEach((transaction, index) => {
+        html += `<div class="upload-transaction">
+          <div class="upload-transaction-header">Transaction ${index + 1}</div>
+          <div class="upload-transaction-details">`;
+        
+        if (transaction.date) {
+          html += `<strong>Date:</strong> ${transaction.date}<br>`;
+        }
+        if (transaction.description) {
+          html += `<strong>Description:</strong> ${transaction.description}<br>`;
+        }
+        if (transaction.amount) {
+          const amount = transaction.amount.toFixed(2);
+          const sign = transaction.type === 'deposit' ? '+' : '-';
+          html += `<strong>Amount:</strong> ${sign}$${amount} (${transaction.type})`;
+        }
+        
+        html += `</div></div>`;
+      });
+      
+      html += `</div>`;
+    } else {
+      html += `<div class="upload-field">
+        <div class="upload-field-label">Transactions</div>
+        <div class="upload-field-value">No transactions found</div>
+      </div>`;
+    }
+    
+    // Show summary of what was created (if any)
+    if (data.created_account) {
+      html += `<div class="upload-success">New account created: ${data.created_account.account_name}</div>`;
+    }
+    
+    if (data.created_transactions && data.created_transactions > 0) {
+      html += `<div class="upload-success">${data.created_transactions} transactions added to your account</div>`;
+    }
+  }
+  
+  resultsContent.innerHTML = html;
+}
+
 // Use centralized handleSignOut from utils.js
 
 // Close modals when clicking outside
 window.onclick = function(event) {
   const createModal = document.getElementById('createAccountModal');
   const transactionModal = document.getElementById('addTransactionModal');
+  const uploadModal = document.getElementById('uploadModal');
   
   if (event.target === createModal) {
     closeCreateAccountModal();
   }
   if (event.target === transactionModal) {
     closeAddTransactionModal();
+  }
+  if (event.target === uploadModal) {
+    closeUploadModal();
   }
 }

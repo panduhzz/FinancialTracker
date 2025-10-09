@@ -11,13 +11,15 @@ const getEnvironmentConfig = () => {
   
   if (environment === 'production') {
     return {
-      REACT_APP_API_URL: process.env.REACT_APP_API_URL, // No hardcoded fallback
+      REACT_APP_API_URL: process.env.REACT_APP_API_URL, // Main backend API URL
+      REACT_APP_UPLOAD_API_URL: process.env.REACT_APP_UPLOAD_API_URL, // Upload backend API URL
       REACT_APP_ENVIRONMENT: 'production',
       REACT_APP_DEBUG: 'false'
     };
   } else {
     return {
-      REACT_APP_API_URL: process.env.REACT_APP_API_URL || 'http://localhost:7071/api', // Only local fallback
+      REACT_APP_API_URL: process.env.REACT_APP_API_URL || 'http://localhost:7071/api', // Main backend fallback
+      REACT_APP_UPLOAD_API_URL: process.env.REACT_APP_UPLOAD_API_URL || 'http://localhost:7072/api', // Upload backend fallback
       REACT_APP_ENVIRONMENT: 'development',
       REACT_APP_DEBUG: 'true'
     };
@@ -35,8 +37,13 @@ function injectEnvironmentVariables() {
   const config = getEnvironmentConfig();
 
   // Validate that production has required environment variables
-  if (config.REACT_APP_ENVIRONMENT === 'production' && !config.REACT_APP_API_URL) {
-    throw new Error('REACT_APP_API_URL is required for production builds');
+  if (config.REACT_APP_ENVIRONMENT === 'production') {
+    if (!config.REACT_APP_API_URL) {
+      throw new Error('REACT_APP_API_URL is required for production builds');
+    }
+    if (!config.REACT_APP_UPLOAD_API_URL) {
+      throw new Error('REACT_APP_UPLOAD_API_URL is required for production builds');
+    }
   }
 
   htmlFiles.forEach(file => {
@@ -49,6 +56,7 @@ function injectEnvironmentVariables() {
       // Inject environment variables
       const envScript = `<script>
   window.REACT_APP_API_URL = '${config.REACT_APP_API_URL}';
+  window.REACT_APP_UPLOAD_API_URL = '${config.REACT_APP_UPLOAD_API_URL}';
   window.REACT_APP_ENVIRONMENT = '${config.REACT_APP_ENVIRONMENT}';
   window.REACT_APP_DEBUG = ${config.REACT_APP_DEBUG};
 </script>`;
