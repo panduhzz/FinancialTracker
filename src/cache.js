@@ -11,6 +11,7 @@ class DataCache {
     // Load existing cache from localStorage
     this.loadFromStorage();
     
+    
     // Cache TTL configuration for different API endpoints
     this.cacheConfig = {
       '/api/accounts': 10 * 60 * 1000, // 10 minutes
