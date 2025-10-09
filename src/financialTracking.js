@@ -470,19 +470,37 @@ function closeUploadModal() {
 
 function populateUploadAccountSelect() {
   const select = document.getElementById('targetAccount');
-  select.innerHTML = '<option value="">Auto-detect or create new account</option>';
+  select.innerHTML = '<option value="">-- Select an account or create new --</option>';
   
-  userAccounts.forEach(account => {
-    const option = document.createElement('option');
-    option.value = account.account_id;
-    option.textContent = `${account.account_name} (${account.account_type}) - $${account.current_balance.toFixed(2)}`;
-    select.appendChild(option);
-  });
+  // Add "Create New Account" option
+  const createNewOption = document.createElement('option');
+  createNewOption.value = 'create_new';
+  createNewOption.textContent = 'Create New Account';
+  select.appendChild(createNewOption);
+  
+  // Add existing accounts
+  if (userAccounts && userAccounts.length > 0) {
+    userAccounts.forEach(account => {
+      const option = document.createElement('option');
+      option.value = account.account_id;
+      option.textContent = `${account.account_name} (${account.account_type}) - $${account.current_balance.toFixed(2)}`;
+      select.appendChild(option);
+    });
+  }
 }
 
 // File selection handler
 document.addEventListener('DOMContentLoaded', function() {
   const fileInput = document.getElementById('statementFile');
+  const targetAccountSelect = document.getElementById('targetAccount');
+  const processBtn = document.getElementById('processBtn');
+  
+  function updateProcessButton() {
+    const hasFile = fileInput && fileInput.files[0];
+    const hasTargetAccount = targetAccountSelect && targetAccountSelect.value;
+    processBtn.disabled = !(hasFile && hasTargetAccount);
+  }
+  
   if (fileInput) {
     fileInput.addEventListener('change', function(e) {
       const file = e.target.files[0];
@@ -491,12 +509,15 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('fileName').textContent = file.name;
         document.getElementById('fileSize').textContent = formatFileSize(file.size);
         document.getElementById('fileInfo').style.display = 'block';
-        document.getElementById('processBtn').disabled = false;
       } else {
         document.getElementById('fileInfo').style.display = 'none';
-        document.getElementById('processBtn').disabled = true;
       }
+      updateProcessButton();
     });
+  }
+  
+  if (targetAccountSelect) {
+    targetAccountSelect.addEventListener('change', updateProcessButton);
   }
 });
 
@@ -539,6 +560,11 @@ async function processStatement() {
     return;
   }
   
+  if (!targetAccount) {
+    showMessage('Please select a target account or choose "Create New Account"', 'error');
+    return;
+  }
+  
   try {
     // Show loading state
     processBtn.disabled = true;
@@ -549,9 +575,11 @@ async function processStatement() {
     // Create form data
     const formData = new FormData();
     formData.append('file', fileInput.files[0]);
-    if (targetAccount) {
+    if (targetAccount && targetAccount !== 'create_new') {
       formData.append('target_account_id', targetAccount);
     }
+    // If targetAccount is 'create_new', we don't send target_account_id
+    // This tells the backend to create a new account
     
     // Make API request to document processing endpoint
     // Using the centralized upload API configuration
@@ -590,13 +618,24 @@ async function processStatement() {
   }
 }
 
+// Global variable to store extracted data for editing
+let extractedData = null;
+
 function displayUploadResults(data) {
   const resultsContent = document.getElementById('uploadResultsContent');
+  const editMode = document.getElementById('uploadEditMode');
+  
+  // Store the data for editing
+  extractedData = data;
+  
   let html = '';
   
   if (data.error) {
     html = `<div class="upload-error">Error: ${data.error}</div>`;
   } else {
+    // Check for missing data that requires editing
+    const missingDataIssues = checkForMissingData(data);
+    
     // Show success message
     html += `<div class="upload-success">Statement processed successfully!</div>`;
     
@@ -663,18 +702,380 @@ function displayUploadResults(data) {
       </div>`;
     }
     
-    // Show summary of what was created (if any)
-    if (data.created_account) {
-      html += `<div class="upload-success">New account created: ${data.created_account.account_name}</div>`;
-    }
-    
-    if (data.created_transactions && data.created_transactions > 0) {
-      html += `<div class="upload-success">${data.created_transactions} transactions added to your account</div>`;
+    // Check if we need to auto-prompt for editing
+    if (missingDataIssues.length > 0) {
+      // Show warning about missing data
+      html += `<div class="upload-warning">
+        <h4>⚠️ Data Review Required</h4>
+        <p>The following issues were found that need your attention:</p>
+        <ul>`;
+      
+      missingDataIssues.forEach(issue => {
+        html += `<li>${issue}</li>`;
+      });
+      
+      html += `</ul>
+        <p><strong>Please review and edit the data before saving.</strong></p>
+      </div>`;
+      
+      // Auto-open edit mode after a short delay
+      setTimeout(() => {
+        enableEditMode();
+        highlightMissingFields(missingDataIssues);
+      }, 1500);
+    } else {
+      // Add edit button for optional editing
+      html += `<div style="margin-top: 20px; text-align: center;">
+        <button type="button" class="btn btn-primary" onclick="enableEditMode()">Edit Data Before Saving</button>
+      </div>`;
     }
   }
   
   resultsContent.innerHTML = html;
 }
+
+function checkForMissingData(data) {
+  const issues = [];
+  
+  // Check transactions for missing dates or descriptions
+  if (data.transactions && data.transactions.length > 0) {
+    data.transactions.forEach((transaction, index) => {
+      // Check for missing or invalid dates
+      const date = transaction.date;
+      if (!date || 
+          date.trim() === '' || 
+          date.toLowerCase() === 'none' || 
+          date.toLowerCase() === 'null' ||
+          date === 'None' ||
+          date === 'null') {
+        issues.push(`Transaction ${index + 1} is missing a date`);
+      }
+      
+      // Check for missing or invalid descriptions
+      const description = transaction.description;
+      if (!description || 
+          description.trim() === '' || 
+          description.toLowerCase() === 'none' || 
+          description.toLowerCase() === 'null' ||
+          description === 'None' ||
+          description === 'null') {
+        issues.push(`Transaction ${index + 1} is missing a description`);
+      }
+    });
+  }
+  
+  return issues;
+}
+
+function highlightMissingFields(issues) {
+  // Add visual indicators to missing fields in edit mode
+  const transactionItems = document.querySelectorAll('.transaction-edit-item');
+  
+  transactionItems.forEach((item, index) => {
+    const dateInput = item.querySelector('input[type="date"]');
+    const descriptionInput = item.querySelector('input[type="text"]');
+    
+    // Check if this transaction has missing data
+    const hasMissingDate = issues.some(issue => issue.includes(`Transaction ${index + 1}`) && issue.includes('date'));
+    const hasMissingDescription = issues.some(issue => issue.includes(`Transaction ${index + 1}`) && issue.includes('description'));
+    
+    if (hasMissingDate) {
+      dateInput.style.borderColor = '#dc3545';
+      dateInput.style.backgroundColor = '#f8d7da';
+      dateInput.placeholder = '⚠️ Date required';
+    }
+    
+    if (hasMissingDescription) {
+      descriptionInput.style.borderColor = '#dc3545';
+      descriptionInput.style.backgroundColor = '#f8d7da';
+      descriptionInput.placeholder = '⚠️ Description required';
+    }
+  });
+}
+
+function enableEditMode() {
+  const resultsDiv = document.getElementById('uploadResults');
+  const editMode = document.getElementById('uploadEditMode');
+  
+  // Hide results, show edit mode
+  resultsDiv.style.display = 'none';
+  editMode.style.display = 'block';
+  
+  // Populate edit fields with extracted data
+  populateEditFields();
+}
+
+function populateEditFields() {
+  if (!extractedData) return;
+  
+  // Populate account information
+  document.getElementById('editAccountNumber').value = extractedData.account_number || '';
+  document.getElementById('editStartingBalance').value = extractedData.starting_balance || 0;
+  document.getElementById('editEndingBalance').value = extractedData.ending_balance || 0;
+  
+  // Populate transactions
+  const transactionsList = document.getElementById('transactionsEditList');
+  transactionsList.innerHTML = '';
+  
+  if (extractedData.transactions && extractedData.transactions.length > 0) {
+    extractedData.transactions.forEach((transaction, index) => {
+      addTransactionEditItem(transaction, index);
+    });
+  } else {
+    // If no transactions, initialize with empty array
+    extractedData.transactions = [];
+  }
+}
+
+function addTransactionEditItem(transaction = null, index = null) {
+  const transactionsList = document.getElementById('transactionsEditList');
+  const transactionId = index !== null ? index : transactionsList.children.length;
+  
+  const transactionItem = document.createElement('div');
+  transactionItem.className = 'transaction-edit-item';
+  transactionItem.innerHTML = `
+    <input type="date" placeholder="Date" value="${transaction?.date || ''}" onchange="updateTransaction(${transactionId}, 'date', this.value)">
+    <input type="text" placeholder="Description" value="${transaction?.description || ''}" onchange="updateTransaction(${transactionId}, 'description', this.value)">
+    <input type="number" placeholder="Amount" step="0.01" value="${transaction?.amount || ''}" onchange="updateTransaction(${transactionId}, 'amount', this.value)">
+    <select onchange="updateTransaction(${transactionId}, 'type', this.value)">
+      <option value="deposit" ${transaction?.type === 'deposit' ? 'selected' : ''}>Deposit</option>
+      <option value="withdrawal" ${transaction?.type === 'withdrawal' ? 'selected' : ''}>Withdrawal</option>
+    </select>
+    <button type="button" onclick="removeTransaction(${transactionId})">Remove</button>
+  `;
+  
+  transactionsList.appendChild(transactionItem);
+}
+
+function addNewTransaction() {
+  addTransactionEditItem();
+}
+
+function updateTransaction(index, field, value) {
+  if (!extractedData.transactions) {
+    extractedData.transactions = [];
+  }
+  
+  if (!extractedData.transactions[index]) {
+    extractedData.transactions[index] = {};
+  }
+  
+  extractedData.transactions[index][field] = value;
+}
+
+function removeTransaction(index) {
+  if (extractedData.transactions && extractedData.transactions[index]) {
+    extractedData.transactions.splice(index, 1);
+    populateEditFields(); // Refresh the display
+  }
+}
+
+function cancelEdit() {
+  const resultsDiv = document.getElementById('uploadResults');
+  const editMode = document.getElementById('uploadEditMode');
+  
+  editMode.style.display = 'none';
+  resultsDiv.style.display = 'block';
+}
+
+async function saveEditedData() {
+  try {
+    showLoading(true);
+    
+    // Validate that all required fields are filled
+    const validationErrors = validateEditedData();
+    if (validationErrors.length > 0) {
+      showMessage(`Please fix the following issues before saving:\n${validationErrors.join('\n')}`, 'error');
+      showLoading(false);
+      return;
+    }
+    
+    // Get the target account selection from the original upload
+    const targetAccount = document.getElementById('targetAccount').value;
+    
+    // Prepare the edited data
+    const editedData = {
+      account_number: document.getElementById('editAccountNumber').value,
+      starting_balance: parseFloat(document.getElementById('editStartingBalance').value) || 0,
+      ending_balance: parseFloat(document.getElementById('editEndingBalance').value) || 0,
+      transactions: extractedData.transactions || [],
+      edited_at: new Date().toISOString(),
+      status: 'edited_ready_for_save'
+    };
+    
+    // Save to main backend
+    await saveToMainBackend(editedData, targetAccount);
+    
+    // Also save to localStorage for backup/testing
+    const savedDocuments = JSON.parse(localStorage.getItem('editedBankStatements') || '[]');
+    savedDocuments.push(editedData);
+    localStorage.setItem('editedBankStatements', JSON.stringify(savedDocuments));
+    
+    // Show success message
+    showMessage('Data saved successfully to the main database!', 'success');
+    
+    // Close modal
+    closeUploadModal();
+    
+  } catch (error) {
+    console.error('Error saving edited data:', error);
+    showMessage('Error saving data. Please try again.', 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+function validateEditedData() {
+  const errors = [];
+  
+  // Check transactions for missing required fields
+  if (extractedData.transactions && extractedData.transactions.length > 0) {
+    extractedData.transactions.forEach((transaction, index) => {
+      // Check for missing or invalid dates
+      const date = transaction.date;
+      if (!date || 
+          date.trim() === '' || 
+          date.toLowerCase() === 'none' || 
+          date.toLowerCase() === 'null' ||
+          date === 'None' ||
+          date === 'null') {
+        errors.push(`Transaction ${index + 1}: Date is required`);
+      }
+      
+      // Check for missing or invalid descriptions
+      const description = transaction.description;
+      if (!description || 
+          description.trim() === '' || 
+          description.toLowerCase() === 'none' || 
+          description.toLowerCase() === 'null' ||
+          description === 'None' ||
+          description === 'null') {
+        errors.push(`Transaction ${index + 1}: Description is required`);
+      }
+    });
+  }
+  
+  return errors;
+}
+
+// Helper functions for testing
+function viewSavedDocuments() {
+  const savedDocuments = JSON.parse(localStorage.getItem('editedBankStatements') || '[]');
+  console.log('All saved bank statement documents:', savedDocuments);
+  
+  if (savedDocuments.length === 0) {
+    console.log('No saved documents found.');
+    showMessage('No saved documents found.', 'info');
+    return;
+  }
+  
+  // Display in a readable format
+  let message = `Found ${savedDocuments.length} saved document(s). Check console for details.`;
+  savedDocuments.forEach((doc, index) => {
+    console.log(`\n--- Document ${index + 1} ---`);
+    console.log('Account Number:', doc.account_number);
+    console.log('Starting Balance:', doc.starting_balance);
+    console.log('Ending Balance:', doc.ending_balance);
+    console.log('Transactions:', doc.transactions.length);
+    console.log('Edited At:', doc.edited_at);
+    console.log('Status:', doc.status);
+  });
+  
+  showMessage(message, 'success');
+}
+
+function clearSavedDocuments() {
+  localStorage.removeItem('editedBankStatements');
+  console.log('All saved documents cleared.');
+  showMessage('All saved documents cleared.', 'success');
+}
+
+async function saveToMainBackend(editedData, targetAccount) {
+  try {
+    let accountId;
+    
+    if (targetAccount === 'create_new') {
+      // Create a new account first
+      const accountResponse = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/accounts`, {
+        method: 'POST',
+        body: JSON.stringify({
+          account_name: `Bank Account ${editedData.account_number}`,
+          account_type: 'checking',
+          initial_balance: editedData.starting_balance,
+          bank_name: 'Bank Statement Import',
+          description: `Account created from bank statement import on ${new Date().toLocaleDateString()}`
+        })
+      });
+      
+      if (!accountResponse.ok) {
+        const errorData = await accountResponse.json();
+        throw new Error(`Failed to create account: ${errorData.error || 'Unknown error'}`);
+      }
+      
+      const account = await accountResponse.json();
+      accountId = account.account_id;
+      
+      showMessage(`Created new account: ${account.account_name}`, 'success');
+    } else {
+      // Use existing account
+      accountId = targetAccount;
+      showMessage(`Using existing account for transactions`, 'success');
+    }
+    
+    // Create each transaction individually
+    let createdCount = 0;
+    let failedCount = 0;
+    
+    for (const transaction of editedData.transactions) {
+      try {
+        const transactionResponse = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/transactions`, {
+          method: 'POST',
+          body: JSON.stringify({
+            account_id: accountId,
+            amount: Math.abs(parseFloat(transaction.amount)), // Always positive amount
+            description: transaction.description,
+            category: 'Other', // Default category as requested
+            transaction_type: transaction.type, // 'income' or 'expense'
+            transaction_date: transaction.date
+          })
+        });
+        
+        if (transactionResponse.ok) {
+          createdCount++;
+        } else {
+          console.error(`Failed to create transaction: ${transaction.description}`);
+          failedCount++;
+        }
+      } catch (error) {
+        console.error(`Error creating transaction: ${transaction.description}`, error);
+        failedCount++;
+      }
+    }
+    
+    // Show results
+    if (createdCount > 0) {
+      showMessage(`Successfully created ${createdCount} transactions!`, 'success');
+    }
+    
+    if (failedCount > 0) {
+      showMessage(`Warning: ${failedCount} transactions could not be created.`, 'error');
+    }
+    
+    // Invalidate cache to refresh data
+    if (window.cacheInvalidation) {
+      window.cacheInvalidation.invalidateUserData();
+      window.cacheInvalidation.invalidateTransactionData();
+    }
+    
+  } catch (error) {
+    console.error('Error saving to main backend:', error);
+    throw error;
+  }
+}
+
+// Make these functions available globally for testing
+window.viewSavedDocuments = viewSavedDocuments;
+window.clearSavedDocuments = clearSavedDocuments;
 
 // Use centralized handleSignOut from utils.js
 
