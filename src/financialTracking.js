@@ -992,6 +992,7 @@ function clearSavedDocuments() {
 
 async function saveToMainBackend(editedData, targetAccount) {
   try {
+    
     let accountId;
     
     if (targetAccount === 'create_new') {
@@ -1028,16 +1029,37 @@ async function saveToMainBackend(editedData, targetAccount) {
     
     for (const transaction of editedData.transactions) {
       try {
+        // Map document extraction types to backend types
+        let transactionType = transaction.type;
+        if (transaction.type === 'deposit') {
+          transactionType = 'income';
+        } else if (transaction.type === 'withdrawal') {
+          transactionType = 'expense';
+        } else {
+          // Default to expense if type is unknown
+          transactionType = 'expense';
+        }
+        
+        // Validate required fields
+        if (!transaction.description || !transaction.amount) {
+          console.warn('Skipping transaction with missing required fields:', transaction);
+          failedCount++;
+          continue;
+        }
+        
+        const transactionData = {
+          account_id: accountId,
+          amount: Math.abs(parseFloat(transaction.amount)), // Always positive amount
+          description: transaction.description,
+          category: 'Other', // Default category as requested
+          transaction_type: transactionType, // 'income' or 'expense'
+          transaction_date: transaction.date
+        };
+        
+        
         const transactionResponse = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/transactions`, {
           method: 'POST',
-          body: JSON.stringify({
-            account_id: accountId,
-            amount: Math.abs(parseFloat(transaction.amount)), // Always positive amount
-            description: transaction.description,
-            category: 'Other', // Default category as requested
-            transaction_type: transaction.type, // 'income' or 'expense'
-            transaction_date: transaction.date
-          })
+          body: JSON.stringify(transactionData)
         });
         
         if (transactionResponse.ok) {
