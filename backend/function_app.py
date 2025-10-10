@@ -1336,10 +1336,12 @@ def accounts_api(req: func.HttpRequest) -> func.HttpResponse:
             try:
                 req_body = req.get_json()
                 if not req_body:
+                    headers = get_cors_headers()
+                    headers["Content-Type"] = "application/json"
                     return func.HttpResponse(
                         json.dumps({"error": "Request body is required"}),
                         status_code=400,
-                        headers={"Content-Type": "application/json"}
+                        headers=headers
                     )
                 
                 # Sanitize input
@@ -1348,10 +1350,12 @@ def accounts_api(req: func.HttpRequest) -> func.HttpResponse:
                 # Validate data
                 is_valid, errors = validate_account_data(account_data)
                 if not is_valid:
+                    headers = get_cors_headers()
+                    headers["Content-Type"] = "application/json"
                     return func.HttpResponse(
                         json.dumps({"error": "Validation failed", "details": errors}),
                         status_code=400,
-                        headers={"Content-Type": "application/json"}
+                        headers=headers
                     )
                 
                 # Create account
@@ -1481,10 +1485,12 @@ def transactions_api(req: func.HttpRequest) -> func.HttpResponse:
             try:
                 req_body = req.get_json()
                 if not req_body:
+                    headers = get_cors_headers()
+                    headers["Content-Type"] = "application/json"
                     return func.HttpResponse(
                         json.dumps({"error": "Request body is required"}),
                         status_code=400,
-                        headers={"Content-Type": "application/json"}
+                        headers=headers
                     )
                 
                 # Sanitize input
@@ -1493,10 +1499,12 @@ def transactions_api(req: func.HttpRequest) -> func.HttpResponse:
                 # Validate data
                 is_valid, errors = validate_transaction_data(transaction_data)
                 if not is_valid:
+                    headers = get_cors_headers()
+                    headers["Content-Type"] = "application/json"
                     return func.HttpResponse(
                         json.dumps({"error": "Validation failed", "details": errors}),
                         status_code=400,
-                        headers={"Content-Type": "application/json"}
+                        headers=headers
                     )
                 
                 # Add transaction

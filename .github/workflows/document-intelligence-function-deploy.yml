@@ -1,0 +1,128 @@
+name: Document Intelligence Function Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend_upload/**'
+
+env:
+  RESOURCE_GROUP_NAME: 'PanduhzDocumentIntelligence'
+  FUNCTION_APP_NAME: 'document-intelligence-function'
+  STORAGE_ACCOUNT_NAME: 'panduhzdocintelstorage'
+  LOCATION: 'westus2'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_RBAC_CREDENTIALS }}
+      
+      - name: Create or Update Resource Group
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            # Create resource group if it doesn't exist, or continue if it does
+            az group create --name ${{ env.RESOURCE_GROUP_NAME }} --location "${{ env.LOCATION }}" || echo "Resource group already exists"
+      
+      - name: Create or Update Storage Account
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            # Check if storage account exists
+            if az storage account show --name ${{ env.STORAGE_ACCOUNT_NAME }} --resource-group ${{ env.RESOURCE_GROUP_NAME }} >/dev/null 2>&1; then
+              echo "Storage account already exists"
+            else
+              az storage account create \
+                --name ${{ env.STORAGE_ACCOUNT_NAME }} \
+                --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+                --location "${{ env.LOCATION }}" \
+                --sku Standard_LRS
+            fi
+      
+      - name: Get Storage Connection String
+        id: storage-connection
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            connectionString=$(az storage account show-connection-string \
+              --name ${{ env.STORAGE_ACCOUNT_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+              --query connectionString --output tsv)
+            echo "connectionString=$connectionString" >> $GITHUB_OUTPUT
+      
+      - name: Create or Update Function App
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            # Check if function app exists
+            if az functionapp show --name ${{ env.FUNCTION_APP_NAME }} --resource-group ${{ env.RESOURCE_GROUP_NAME }} >/dev/null 2>&1; then
+              echo "Function app already exists"
+            else
+              az functionapp create \
+                --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+                --consumption-plan-location "${{ env.LOCATION }}" \
+                --runtime python \
+                --runtime-version ${{ env.PYTHON_VERSION }} \
+                --functions-version 4 \
+                --os-type Linux \
+                --name ${{ env.FUNCTION_APP_NAME }} \
+                --storage-account ${{ env.STORAGE_ACCOUNT_NAME }}
+            fi
+      
+      - name: Set Storage Connection String
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            az functionapp config appsettings set \
+              --name ${{ env.FUNCTION_APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+              --settings "AzureWebJobsStorage=${{ steps.storage-connection.outputs.connectionString }}"
+      
+      - name: Set Document Intelligence Environment Variables
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            az functionapp config appsettings set \
+              --name ${{ env.FUNCTION_APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+              --settings "ENDPOINT=${{ secrets.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT }}" \
+                         "KEY=${{ secrets.AZURE_DOCUMENT_INTELLIGENCE_KEY }}" \
+                         "AZURE_STORAGE_CONNECTION_STRING=${{ steps.storage-connection.outputs.connectionString }}" \
+                         "AZURE_STORAGE_CONTAINER_NAME=bank-statements"
+      
+      - name: Configure CORS
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            az functionapp cors add \
+              --name ${{ env.FUNCTION_APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+              --allowed-origins "https://panduhzco.com"
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Build Dependencies Locally
+        run: |
+            cd backend_upload
+            pip install -r requirements.txt --target .python_packages/lib/site-packages
+      
+      
+      - name: Deploy to Azure Functions
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ env.FUNCTION_APP_NAME }}
+          package: './backend_upload'
+          publish-profile: ${{ secrets.AZURE_DIFUNCTIONAPP_PUBLISH_PROFILE }}
+          scm-do-build-during-deployment: false

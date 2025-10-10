@@ -203,6 +203,13 @@ body {
   position: relative;
 }
 
+/* Upload modal specific styling */
+#uploadModal .modal-content {
+  max-width: 95%;
+  width: 95%;
+  max-height: 95vh;
+}
+
 @keyframes modalSlideIn {
   from {
     opacity: 0;
@@ -390,6 +397,31 @@ body {
   .modal-footer .btn {
     width: 100%;
   }
+  
+  /* Upload modal responsive adjustments */
+  #uploadModal .modal-content {
+    width: 98%;
+    max-width: 98%;
+    margin: 1% auto;
+  }
+  
+  /* Transaction edit items responsive */
+  .transaction-edit-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .transaction-edit-item input,
+  .transaction-edit-item select {
+    min-width: 100%;
+    max-width: 100%;
+    margin-bottom: 5px;
+  }
+  
+  .transaction-edit-item button {
+    align-self: flex-end;
+    margin-top: 5px;
+  }
 }
 
 /* Success/Error Messages */
@@ -458,6 +490,208 @@ body {
   color: #dc3545;
 }
 
+/* Upload modal styles */
+.upload-area {
+  border: 2px dashed #667eea;
+  border-radius: 10px;
+  padding: 30px;
+  text-align: center;
+  margin-bottom: 20px;
+  background-color: #f8f9fa;
+  transition: all 0.3s ease;
+}
+
+.upload-area:hover {
+  background-color: #e9ecef;
+  border-color: #5a6fd8;
+}
+
+.upload-area h3 {
+  color: #333;
+  margin-bottom: 10px;
+  font-size: 1.3em;
+}
+
+.upload-area p {
+  color: #666;
+  margin-bottom: 20px;
+  font-size: 0.95em;
+}
+
+.upload-area input[type="file"] {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  background: white;
+  font-size: 1em;
+  cursor: pointer;
+}
+
+.file-info {
+  background: #e3f2fd;
+  border: 1px solid #bbdefb;
+  border-radius: 5px;
+  padding: 15px;
+  margin-top: 15px;
+  text-align: left;
+}
+
+.file-info p {
+  margin: 5px 0;
+  color: #1976d2;
+  font-size: 0.9em;
+}
+
+.upload-options {
+  margin: 20px 0;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.upload-options small {
+  color: #666;
+  font-size: 0.85em;
+  margin-top: 5px;
+  display: block;
+}
+
+.upload-options label {
+  font-weight: 600;
+}
+
+.upload-options select:required:invalid {
+  border-color: #dc3545;
+  box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1);
+}
+
+.upload-options select:required:valid {
+  border-color: #28a745;
+}
+
+.upload-results {
+  margin-top: 20px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.upload-results h3 {
+  color: #333;
+  margin-bottom: 15px;
+  font-size: 1.2em;
+}
+
+.upload-field {
+  margin: 10px 0;
+  padding: 10px;
+  background: white;
+  border-radius: 5px;
+  border-left: 4px solid #667eea;
+}
+
+.upload-field-label {
+  font-weight: bold;
+  color: #333;
+  font-size: 0.9em;
+}
+
+.upload-field-value {
+  color: #666;
+  margin-top: 5px;
+  font-size: 0.9em;
+}
+
+.upload-transactions {
+  margin-top: 15px;
+}
+
+.upload-transaction {
+  background: white;
+  margin: 8px 0;
+  padding: 12px;
+  border-radius: 5px;
+  border-left: 4px solid #28a745;
+}
+
+.upload-transaction-header {
+  font-weight: bold;
+  color: #333;
+  font-size: 0.9em;
+}
+
+.upload-transaction-details {
+  color: #666;
+  margin-top: 5px;
+  font-size: 0.85em;
+}
+
+.upload-error {
+  color: #dc3545;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  padding: 10px;
+  border-radius: 5px;
+  margin: 10px 0;
+  font-size: 0.9em;
+}
+
+.upload-success {
+  color: #155724;
+  background-color: #d4edda;
+  border: 1px solid #c3e6cb;
+  padding: 10px;
+  border-radius: 5px;
+  margin: 10px 0;
+  font-size: 0.9em;
+}
+
+.upload-warning {
+  color: #856404;
+  background-color: #fff3cd;
+  border: 1px solid #ffeaa7;
+  padding: 15px;
+  border-radius: 5px;
+  margin: 15px 0;
+  font-size: 0.9em;
+}
+
+.upload-warning h4 {
+  color: #856404;
+  margin: 0 0 10px 0;
+  font-size: 1.1em;
+}
+
+.upload-warning ul {
+  margin: 10px 0;
+  padding-left: 20px;
+}
+
+.upload-warning li {
+  margin: 5px 0;
+}
+
+.upload-loading {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+}
+
+.upload-loading::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #e1e5e9;
+  border-top: 2px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 10px;
+}
+
 /* Recurring transaction styles */
 #recurringOptions {
   background: #f8f9fa;
@@ -497,4 +731,94 @@ body {
   color: #1976d2;
   font-size: 13px;
   line-height: 1.4;
+}
+
+/* Edit mode styles */
+.upload-edit-mode {
+  margin-top: 20px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.edit-section {
+  margin-bottom: 25px;
+  padding: 15px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.edit-section h4 {
+  color: #333;
+  margin-bottom: 15px;
+  font-size: 1.1em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.transactions-edit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.transaction-edit-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+  min-width: 0; /* Allow flex items to shrink */
+}
+
+.transaction-edit-item input {
+  flex: 1;
+  min-width: 120px; /* Minimum width for inputs */
+  max-width: 200px; /* Maximum width to prevent overflow */
+  padding: 8px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.transaction-edit-item select {
+  flex: 0 0 auto;
+  min-width: 100px;
+  max-width: 150px;
+  padding: 8px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.transaction-edit-item button {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8em;
+  white-space: nowrap;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #dee2e6;
+}
+
+.btn-small {
+  padding: 8px 15px;
+  font-size: 0.85em;
 }
