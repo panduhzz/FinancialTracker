@@ -4,6 +4,7 @@ import os
 import io
 import uuid
 import json
+import requests
 from datetime import datetime
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
@@ -33,6 +34,63 @@ def get_document_intelligence_client():
 def get_blob_service_client():
     connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
     return BlobServiceClient.from_connection_string(connection_string)
+
+# Integration with main financial system
+def get_main_api_base_url():
+    """Get the base URL for the main financial API"""
+    # In production, this would be the actual API URL
+    # For development, assume it's running on port 7071
+    return os.getenv("MAIN_API_URL", "http://localhost:7071/api")
+
+def create_account_via_api(user_id: str, account_data: dict, auth_token: str) -> dict:
+    """Create an account via the main API"""
+    try:
+        url = f"{get_main_api_base_url()}/accounts"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {auth_token}"
+        }
+        
+        response = requests.post(url, json=account_data, headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logging.error(f"Error creating account via API: {str(e)}")
+        raise e
+
+def create_transaction_via_api(transaction_data: dict, auth_token: str) -> dict:
+    """Create a transaction via the main API"""
+    try:
+        url = f"{get_main_api_base_url()}/transactions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {auth_token}"
+        }
+        
+        response = requests.post(url, json=transaction_data, headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logging.error(f"Error creating transaction via API: {str(e)}")
+        raise e
+
+def process_extracted_data(extracted_data: dict, user_id: str, target_account_id: str = None, auth_token: str = None) -> dict:
+    """Process extracted bank statement data and return results without creating accounts/transactions"""
+    result = {
+        'created_account': None,
+        'created_transactions': 0,
+        'account_number': extracted_data.get('account_number'),
+        'starting_balance': extracted_data.get('starting_balance'),
+        'ending_balance': extracted_data.get('ending_balance'),
+        'transactions': extracted_data.get('transactions', []),
+        'integration_status': 'extraction_only',
+        'integration_message': 'Document processed successfully. Account and transaction creation is currently disabled.'
+    }
+    
+    # For now, just return the extracted data without creating accounts/transactions
+    logging.info("Account and transaction creation is disabled. Returning extracted data only.")
+    
+    return result
 
 @app.route(route="financialUpload", methods=["POST", "OPTIONS"])
 def financialUpload(req: func.HttpRequest) -> func.HttpResponse:
@@ -161,8 +219,28 @@ def financialUpload(req: func.HttpRequest) -> func.HttpResponse:
         print('Document analysis completed')
         
         # Extract the required information
-        result = extract_bank_statement_data(bankstatements)
-        print(f'Extracted data: {result}')
+        extracted_data = extract_bank_statement_data(bankstatements)
+        print(f'Extracted data: {extracted_data}')
+        
+        # Get user ID and auth token from request
+        user_id = None
+        auth_token = None
+        target_account_id = None
+        
+        # Try to get user ID from Authorization header
+        auth_header = req.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            auth_token = auth_header[7:]
+            # For now, we'll use a placeholder user ID
+            # In production, you'd decode the JWT token to get the actual user ID
+            user_id = "placeholder-user-id"  # This should be extracted from the JWT token
+        
+        # Get target account ID from form data if provided
+        if req.form and 'target_account_id' in req.form:
+            target_account_id = req.form['target_account_id']
+        
+        # Process the extracted data and create accounts/transactions
+        result = process_extracted_data(extracted_data, user_id, target_account_id, auth_token)
         
         # Delete the blob from Azure Storage after analysis
         try:

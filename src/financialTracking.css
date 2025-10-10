@@ -203,6 +203,13 @@ body {
   position: relative;
 }
 
+/* Upload modal specific styling */
+#uploadModal .modal-content {
+  max-width: 95%;
+  width: 95%;
+  max-height: 95vh;
+}
+
 @keyframes modalSlideIn {
   from {
     opacity: 0;
@@ -390,6 +397,31 @@ body {
   .modal-footer .btn {
     width: 100%;
   }
+  
+  /* Upload modal responsive adjustments */
+  #uploadModal .modal-content {
+    width: 98%;
+    max-width: 98%;
+    margin: 1% auto;
+  }
+  
+  /* Transaction edit items responsive */
+  .transaction-edit-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .transaction-edit-item input,
+  .transaction-edit-item select {
+    min-width: 100%;
+    max-width: 100%;
+    margin-bottom: 5px;
+  }
+  
+  .transaction-edit-item button {
+    align-self: flex-end;
+    margin-top: 5px;
+  }
 }
 
 /* Success/Error Messages */
@@ -526,6 +558,19 @@ body {
   display: block;
 }
 
+.upload-options label {
+  font-weight: 600;
+}
+
+.upload-options select:required:invalid {
+  border-color: #dc3545;
+  box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1);
+}
+
+.upload-options select:required:valid {
+  border-color: #28a745;
+}
+
 .upload-results {
   margin-top: 20px;
   padding: 20px;
@@ -604,6 +649,31 @@ body {
   font-size: 0.9em;
 }
 
+.upload-warning {
+  color: #856404;
+  background-color: #fff3cd;
+  border: 1px solid #ffeaa7;
+  padding: 15px;
+  border-radius: 5px;
+  margin: 15px 0;
+  font-size: 0.9em;
+}
+
+.upload-warning h4 {
+  color: #856404;
+  margin: 0 0 10px 0;
+  font-size: 1.1em;
+}
+
+.upload-warning ul {
+  margin: 10px 0;
+  padding-left: 20px;
+}
+
+.upload-warning li {
+  margin: 5px 0;
+}
+
 .upload-loading {
   text-align: center;
   padding: 20px;
@@ -661,4 +731,94 @@ body {
   color: #1976d2;
   font-size: 13px;
   line-height: 1.4;
+}
+
+/* Edit mode styles */
+.upload-edit-mode {
+  margin-top: 20px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.edit-section {
+  margin-bottom: 25px;
+  padding: 15px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.edit-section h4 {
+  color: #333;
+  margin-bottom: 15px;
+  font-size: 1.1em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.transactions-edit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.transaction-edit-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+  min-width: 0; /* Allow flex items to shrink */
+}
+
+.transaction-edit-item input {
+  flex: 1;
+  min-width: 120px; /* Minimum width for inputs */
+  max-width: 200px; /* Maximum width to prevent overflow */
+  padding: 8px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.transaction-edit-item select {
+  flex: 0 0 auto;
+  min-width: 100px;
+  max-width: 150px;
+  padding: 8px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.transaction-edit-item button {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8em;
+  white-space: nowrap;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #dee2e6;
+}
+
+.btn-small {
+  padding: 8px 15px;
+  font-size: 0.85em;
 }
