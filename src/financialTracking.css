@@ -203,6 +203,13 @@ body {
   position: relative;
 }
 
+/* Upload modal specific styling */
+#uploadModal .modal-content {
+  max-width: 95%;
+  width: 95%;
+  max-height: 95vh;
+}
+
 @keyframes modalSlideIn {
   from {
     opacity: 0;
@@ -389,6 +396,31 @@ body {
   
   .modal-footer .btn {
     width: 100%;
+  }
+  
+  /* Upload modal responsive adjustments */
+  #uploadModal .modal-content {
+    width: 98%;
+    max-width: 98%;
+    margin: 1% auto;
+  }
+  
+  /* Transaction edit items responsive */
+  .transaction-edit-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .transaction-edit-item input,
+  .transaction-edit-item select {
+    min-width: 100%;
+    max-width: 100%;
+    margin-bottom: 5px;
+  }
+  
+  .transaction-edit-item button {
+    align-self: flex-end;
+    margin-top: 5px;
   }
 }
 
@@ -735,16 +767,20 @@ body {
 
 .transaction-edit-item {
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
   align-items: center;
   padding: 10px;
   background: #f8f9fa;
   border-radius: 6px;
   border: 1px solid #dee2e6;
+  min-width: 0; /* Allow flex items to shrink */
 }
 
 .transaction-edit-item input {
   flex: 1;
+  min-width: 120px; /* Minimum width for inputs */
+  max-width: 200px; /* Maximum width to prevent overflow */
   padding: 8px;
   border: 1px solid #ced4da;
   border-radius: 4px;
@@ -752,6 +788,9 @@ body {
 }
 
 .transaction-edit-item select {
+  flex: 0 0 auto;
+  min-width: 100px;
+  max-width: 150px;
   padding: 8px;
   border: 1px solid #ced4da;
   border-radius: 4px;
@@ -759,6 +798,7 @@ body {
 }
 
 .transaction-edit-item button {
+  flex: 0 0 auto;
   padding: 6px 10px;
   background: #dc3545;
   color: white;
@@ -766,6 +806,7 @@ body {
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.8em;
+  white-space: nowrap;
 }
 
 .edit-actions {

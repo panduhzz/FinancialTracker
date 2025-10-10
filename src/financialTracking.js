@@ -303,6 +303,36 @@ function toggleRecurringOptions() {
 // Make function globally available
 window.toggleRecurringOptions = toggleRecurringOptions;
 
+// Date input validation for upload edit mode
+function validateDateInput(input) {
+  if (!input) return;
+  
+  // Check if the input has a valid date value
+  if (input.value && input.value.trim() !== '') {
+    // Additional validation: check if it's a valid date
+    const dateValue = new Date(input.value);
+    if (!isNaN(dateValue.getTime())) {
+      // Valid date entered - remove red styling, show green
+      input.style.borderColor = '#28a745';
+      input.style.boxShadow = '0 0 0 3px rgba(40, 167, 69, 0.1)';
+      input.style.backgroundColor = 'white';
+    } else {
+      // Invalid date format - show red styling
+      input.style.borderColor = '#dc3545';
+      input.style.boxShadow = '0 0 0 3px rgba(220, 53, 69, 0.1)';
+      input.style.backgroundColor = '#f8d7da';
+    }
+  } else {
+    // No date - show red styling
+    input.style.borderColor = '#dc3545';
+    input.style.boxShadow = '0 0 0 3px rgba(220, 53, 69, 0.1)';
+    input.style.backgroundColor = '#f8d7da';
+  }
+}
+
+// Make function globally available
+window.validateDateInput = validateDateInput;
+
 // Form Handlers
 document.getElementById('createAccountForm').addEventListener('submit', async function(e) {
   e.preventDefault();
@@ -825,6 +855,12 @@ function populateEditFields() {
     // If no transactions, initialize with empty array
     extractedData.transactions = [];
   }
+  
+  // Apply validation to all date inputs after a short delay to ensure DOM is updated
+  setTimeout(() => {
+    const dateInputs = document.querySelectorAll('#transactionsEditList input[type="date"]');
+    dateInputs.forEach(input => validateDateInput(input));
+  }, 100);
 }
 
 function addTransactionEditItem(transaction = null, index = null) {
@@ -834,7 +870,7 @@ function addTransactionEditItem(transaction = null, index = null) {
   const transactionItem = document.createElement('div');
   transactionItem.className = 'transaction-edit-item';
   transactionItem.innerHTML = `
-    <input type="date" placeholder="Date" value="${transaction?.date || ''}" onchange="updateTransaction(${transactionId}, 'date', this.value)">
+    <input type="date" placeholder="Date" value="${transaction?.date || ''}" onchange="updateTransaction(${transactionId}, 'date', this.value)" oninput="validateDateInput(this)">
     <input type="text" placeholder="Description" value="${transaction?.description || ''}" onchange="updateTransaction(${transactionId}, 'description', this.value)">
     <input type="number" placeholder="Amount" step="0.01" value="${transaction?.amount || ''}" onchange="updateTransaction(${transactionId}, 'amount', this.value)">
     <select onchange="updateTransaction(${transactionId}, 'type', this.value)">
@@ -845,6 +881,12 @@ function addTransactionEditItem(transaction = null, index = null) {
   `;
   
   transactionsList.appendChild(transactionItem);
+  
+  // Apply initial validation to the date input
+  const dateInput = transactionItem.querySelector('input[type="date"]');
+  if (dateInput) {
+    validateDateInput(dateInput);
+  }
 }
 
 function addNewTransaction() {
