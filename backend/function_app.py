@@ -8,7 +8,141 @@ import jwt
 import requests
 import calendar
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
+from functools import wraps
+
+# Custom Exception Classes
+class APIError(Exception):
+    """Base exception for API errors"""
+    def __init__(self, message: str, status_code: int = 500, details: dict = None):
+        self.message = message
+        self.status_code = status_code
+        self.details = details or {}
+        super().__init__(self.message)
+
+class ValidationError(APIError):
+    """Raised when input validation fails"""
+    def __init__(self, message: str, validation_errors: list = None):
+        super().__init__(message, 400, {"validation_errors": validation_errors})
+
+class AuthenticationError(APIError):
+    """Raised when authentication fails"""
+    def __init__(self, message: str = "Authentication required"):
+        super().__init__(message, 401)
+
+class AuthorizationError(APIError):
+    """Raised when user lacks permission"""
+    def __init__(self, message: str = "Access denied"):
+        super().__init__(message, 403)
+
+class NotFoundError(APIError):
+    """Raised when resource not found"""
+    def __init__(self, message: str = "Resource not found"):
+        super().__init__(message, 404)
+
+class BusinessLogicError(APIError):
+    """Raised when business rules are violated"""
+    def __init__(self, message: str, status_code: int = 400):
+        super().__init__(message, status_code)
+
+class DatabaseError(APIError):
+    """Raised when database operations fail"""
+    def __init__(self, message: str = "Database operation failed"):
+        super().__init__(message, 500)
+
+# Response Builder Class
+class ResponseBuilder:
+    @staticmethod
+    def success(data: Any = None, message: str = None, status_code: int = 200):
+        """Create a successful response"""
+        response_data = {}
+        if data is not None:
+            response_data["data"] = data
+        if message:
+            response_data["message"] = message
+            
+        return func.HttpResponse(
+            json.dumps(response_data),
+            status_code=status_code,
+            headers=ResponseBuilder._get_headers()
+        )
+    
+    @staticmethod
+    def error(error: APIError, include_details: bool = True):
+        """Create an error response"""
+        response_data = {
+            "error": error.message,
+            "status_code": error.status_code
+        }
+        
+        if include_details and error.details:
+            response_data["details"] = error.details
+            
+        # Log the error appropriately
+        if error.status_code >= 500:
+            logging.error(f"Server error: {error.message}", extra={"details": error.details})
+        else:
+            logging.warning(f"Client error: {error.message}", extra={"details": error.details})
+            
+        return func.HttpResponse(
+            json.dumps(response_data),
+            status_code=error.status_code,
+            headers=ResponseBuilder._get_headers()
+        )
+    
+    @staticmethod
+    def _get_headers() -> Dict[str, str]:
+        """Get standard headers including CORS"""
+        return {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, X-User-ID, Authorization",
+            "Access-Control-Max-Age": "86400"
+        }
+
+# Error Handler Decorators
+def handle_api_errors(func):
+    """Decorator to handle API errors consistently"""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except APIError as e:
+            return ResponseBuilder.error(e)
+        except ValueError as e:
+            # Convert ValueError to ValidationError
+            validation_error = ValidationError(str(e))
+            return ResponseBuilder.error(validation_error)
+        except Exception as e:
+            # Log unexpected errors
+            logging.error(f"Unexpected error in {func.__name__}: {str(e)}", exc_info=True)
+            unexpected_error = APIError("Internal server error", 500)
+            return ResponseBuilder.error(unexpected_error, include_details=False)
+    
+    return wrapper
+
+def handle_database_errors(func):
+    """Decorator specifically for database operations"""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            error_message = str(e).lower()
+            if any(phrase in error_message for phrase in [
+                "table specified does not exist",
+                "not found",
+                "table not found",
+                "resource not found"
+            ]):
+                # Handle first-time user scenario
+                logging.info(f"First-time user detected: {str(e)}")
+                return None  # or appropriate default
+            else:
+                raise DatabaseError(f"Database operation failed: {str(e)}")
+    
+    return wrapper
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
@@ -222,8 +356,8 @@ def get_table_client(table_name: str):
     table_service_client = get_table_service_client()
     return table_service_client.get_table_client(table_name)
 
-def validate_account_data(account_data: Dict) -> Tuple[bool, List[str]]:
-    """Validate account data before saving"""
+def validate_account_data(account_data: Dict) -> None:
+    """Validate account data and raise ValidationError if invalid"""
     errors = []
     
     if not account_data.get('account_name'):
@@ -250,10 +384,11 @@ def validate_account_data(account_data: Dict) -> Tuple[bool, List[str]]:
         except (ValueError, TypeError):
             errors.append("Invalid account creation date format")
     
-    return len(errors) == 0, errors
+    if errors:
+        raise ValidationError("Account validation failed", errors)
 
-def validate_transaction_data(transaction_data: Dict) -> Tuple[bool, List[str]]:
-    """Validate transaction data before saving"""
+def validate_transaction_data(transaction_data: Dict) -> None:
+    """Validate transaction data and raise ValidationError if invalid"""
     errors = []
     
     if not transaction_data.get('account_id'):
@@ -285,7 +420,8 @@ def validate_transaction_data(transaction_data: Dict) -> Tuple[bool, List[str]]:
     except (ValueError, TypeError):
         errors.append("Amount must be a valid number")
     
-    return len(errors) == 0, errors
+    if errors:
+        raise ValidationError("Transaction validation failed", errors)
 
 def sanitize_user_input(data: Dict) -> Dict:
     """Sanitize user input to prevent injection attacks"""
@@ -755,6 +891,95 @@ def delete_transaction(transaction_id: str, user_id: str) -> Dict:
         
     except Exception as e:
         logging.error(f"Error deleting transaction: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+def update_transaction(transaction_id: str, user_id: str, amount: float, description: str, 
+                     category: str, transaction_type: str, date: Optional[str] = None) -> Dict:
+    """Update a transaction and recalculate account balance"""
+    try:
+        table_client = get_table_client("Transactions")
+        
+        # Get the existing transaction
+        try:
+            existing_transaction = table_client.get_entity(partition_key=user_id, row_key=transaction_id)
+        except Exception as e:
+            if "ResourceNotFound" in str(e) or "not found" in str(e).lower():
+                return {"success": False, "error": "Transaction not found"}
+            raise e
+        
+        # Store original values for balance recalculation
+        original_account_id = existing_transaction.get('account_id')
+        original_amount = float(existing_transaction.get('amount', 0))
+        original_transaction_type = existing_transaction.get('transaction_type')
+        
+        # Validate the new data (for updates, we don't need account_id)
+        transaction_data = {
+            'amount': amount,
+            'description': description,
+            'category': category,
+            'transaction_type': transaction_type,
+            'transaction_date': date
+        }
+        
+        # Basic validation for update (without account_id requirement)
+        errors = []
+        if not transaction_data.get('description'):
+            errors.append("Description is required")
+        if not transaction_data.get('category'):
+            errors.append("Category is required")
+        if not transaction_data.get('transaction_type'):
+            errors.append("Transaction type is required")
+        elif transaction_data.get('transaction_type') not in ['income', 'expense', 'transfer']:
+            errors.append("Invalid transaction type")
+        if not transaction_data.get('amount') or float(transaction_data.get('amount', 0)) <= 0:
+            errors.append("Amount must be greater than 0")
+        
+        if errors:
+            return {"success": False, "error": "Validation failed", "details": errors}
+        
+        # Handle date formatting
+        if date:
+            try:
+                # Validate and format the date
+                datetime.strptime(date, '%Y-%m-%d')
+            except ValueError:
+                logging.warning(f"Invalid ISO date format: {date}")
+                date = datetime.utcnow().strftime('%Y-%m-%d')
+        else:
+            date = datetime.utcnow().strftime('%Y-%m-%d')
+        
+        # First, reverse the original transaction's effect on account balance
+        if original_account_id and original_transaction_type:
+            if original_transaction_type == 'income':
+                # Original income was added, so subtract it
+                update_account_balance(original_account_id, user_id, original_amount, 'expense')
+            elif original_transaction_type == 'expense':
+                # Original expense was subtracted, so add it back
+                update_account_balance(original_account_id, user_id, original_amount, 'income')
+            elif original_transaction_type == 'transfer':
+                # Original transfer was subtracted, so add it back
+                update_account_balance(original_account_id, user_id, original_amount, 'income')
+        
+        # Update the transaction entity
+        existing_transaction['amount'] = amount
+        existing_transaction['description'] = description
+        existing_transaction['category'] = category
+        existing_transaction['transaction_type'] = transaction_type
+        existing_transaction['transaction_date'] = date
+        existing_transaction['last_updated'] = datetime.utcnow().isoformat()
+        
+        # Save the updated transaction
+        table_client.update_entity(existing_transaction)
+        
+        # Apply the new transaction's effect on account balance
+        if original_account_id and transaction_type:
+            update_account_balance(original_account_id, user_id, amount, transaction_type)
+        
+        logging.info(f"Updated transaction {transaction_id} for user {user_id}")
+        return {"success": True, "message": "Transaction updated successfully", "transaction_id": transaction_id}
+        
+    except Exception as e:
+        logging.error(f"Error updating transaction: {str(e)}")
         return {"success": False, "error": str(e)}
 
 def delete_account(account_id: str, user_id: str) -> Dict:
@@ -1296,260 +1521,111 @@ def get_balance_history(user_id: str, months: int = 12) -> Dict:
 
 # API Endpoints
 @app.route(route="accounts", methods=["GET", "POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+@handle_api_errors
 def accounts_api(req: func.HttpRequest) -> func.HttpResponse:
     """API endpoint for account operations"""
-    try:
         # Handle CORS preflight requests
-        if req.method == "OPTIONS":
-            return func.HttpResponse(
-                "",
-                status_code=200,
-                headers=get_cors_headers()
-            )
-        
+    if req.method == "OPTIONS":
+        return ResponseBuilder.success(status_code=200)
         
         # Get user ID using secure authentication
-        try:
-            user_id = get_user_id_from_request(req)
-        except ValueError as auth_error:
-            return func.HttpResponse(
-                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
-                status_code=401,
-                headers=get_cors_headers()
-            )
+    try:
+        user_id = get_user_id_from_request(req)
+    except ValueError as e:
+        raise AuthenticationError(f"Authentication required: {str(e)}")
         
-        if req.method == "GET":
+    if req.method == "GET":
             # Get user accounts
-            accounts = get_user_accounts(user_id)
-            
-            headers = get_cors_headers()
-            headers["Content-Type"] = "application/json"
-            
-            return func.HttpResponse(
-                json.dumps(accounts),
-                status_code=200,
-                headers=headers
-            )
+        accounts = get_user_accounts(user_id)
+        return ResponseBuilder.success(data=accounts)
         
-        elif req.method == "POST":
+    elif req.method == "POST":
             # Create new account
-            try:
-                req_body = req.get_json()
-                if not req_body:
-                    headers = get_cors_headers()
-                    headers["Content-Type"] = "application/json"
-                    return func.HttpResponse(
-                        json.dumps({"error": "Request body is required"}),
-                        status_code=400,
-                        headers=headers
-                    )
+            req_body = req.get_json()
+            if not req_body:
+                raise ValidationError("Request body is required")
                 
-                # Sanitize input
-                account_data = sanitize_user_input(req_body)
-                
-                # Validate data
-                is_valid, errors = validate_account_data(account_data)
-                if not is_valid:
-                    headers = get_cors_headers()
-                    headers["Content-Type"] = "application/json"
-                    return func.HttpResponse(
-                        json.dumps({"error": "Validation failed", "details": errors}),
-                        status_code=400,
-                        headers=headers
-                    )
-                
-                # Create account
-                new_account = create_bank_account(
-                    user_id=user_id,
-                    account_name=account_data['account_name'],
-                    account_type=account_data['account_type'],
-                    initial_balance=float(account_data.get('initial_balance', 0)),
-                    bank_name=account_data.get('bank_name', ''),
-                    description=account_data.get('description', ''),
-                    account_creation_date=account_data.get('account_creation_date')
-                )
-                
-                headers = get_cors_headers()
-                headers["Content-Type"] = "application/json"
-                return func.HttpResponse(
-                    json.dumps(new_account),
-                    status_code=201,
-                    headers=headers
-                )
-                
-            except Exception as e:
-                logging.error(f"Error creating account: {str(e)}")
-                headers = get_cors_headers()
-                headers["Content-Type"] = "application/json"
-                return func.HttpResponse(
-                    json.dumps({"error": "Failed to create account", "details": str(e)}),
-                    status_code=500,
-                    headers=headers
-                )
-    
-    except Exception as e:
-        headers = get_cors_headers()
-        headers["Content-Type"] = "application/json"
-        return func.HttpResponse(
-            json.dumps({"error": "Internal server error", "details": str(e)}),
-            status_code=500,
-            headers=headers
-        )
+            # Sanitize input
+            account_data = sanitize_user_input(req_body)
+            
+            # Validate data - this will raise ValidationError if invalid
+            validate_account_data(account_data)
+            
+            # Create account
+            new_account = create_bank_account(
+                user_id=user_id,
+                account_name=account_data['account_name'],
+                account_type=account_data['account_type'],
+                initial_balance=float(account_data.get('initial_balance', 0)),
+                bank_name=account_data.get('bank_name', ''),
+                description=account_data.get('description', ''),
+                account_creation_date=account_data.get('account_creation_date')
+            )
+            
+            return ResponseBuilder.success(data=new_account, status_code=201)
 
 @app.route(route="accounts/{account_id}", methods=["DELETE", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+@handle_api_errors
 def delete_account_api(req: func.HttpRequest) -> func.HttpResponse:
     """API endpoint for deleting an account"""
-    try:
         # Handle CORS preflight requests
-        if req.method == "OPTIONS":
-            return func.HttpResponse(
-                "",
-                status_code=200,
-                headers=get_cors_headers()
-            )
+    if req.method == "OPTIONS":
+        return ResponseBuilder.success(status_code=200)
+    
+    # Get user ID using secure authentication
+    user_id = get_user_id_from_request(req)
         
-        # Get user ID using secure authentication
-        try:
-            user_id = get_user_id_from_request(req)
-        except ValueError as auth_error:
-            return func.HttpResponse(
-                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
-                status_code=401,
-                headers=get_cors_headers()
-            )
-        
-        if req.method == "DELETE":
-            # Get account ID from route parameters
-            account_id = req.route_params.get('account_id')
-            if not account_id:
-                return func.HttpResponse(
-                    json.dumps({"error": "Account ID is required"}),
-                    status_code=400,
-                    headers=get_cors_headers()
-                )
+    if req.method == "DELETE":
+        # Get account ID from route parameters
+        account_id = req.route_params.get('account_id')
+        if not account_id:
+            raise ValidationError("Account ID is required")
             
-            # Delete the account
-            result = delete_account(account_id, user_id)
-            
-            if result.get('success'):
-                return func.HttpResponse(
-                    json.dumps(result),
-                    status_code=200,
-                    headers=get_cors_headers()
-                )
-            else:
-                return func.HttpResponse(
-                    json.dumps(result),
-                    status_code=400,
-                    headers=get_cors_headers()
-                )
-        
-        return func.HttpResponse(
-            json.dumps({"error": "Method not allowed"}),
-            status_code=405,
-            headers=get_cors_headers()
-        )
-
-    except Exception as e:
-        logging.error(f"Error in delete account API: {str(e)}")
-        return func.HttpResponse(
-            json.dumps({"error": str(e)}),
-            status_code=500,
-            headers=get_cors_headers()
-        )
-
+        # Delete the account
+        result = delete_account(account_id, user_id)
+        return ResponseBuilder.success(data=result)
 @app.route(route="transactions", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+@handle_api_errors
 def transactions_api(req: func.HttpRequest) -> func.HttpResponse:
     """API endpoint for transaction operations"""
-    try:
         # Handle CORS preflight requests
-        if req.method == "OPTIONS":
-            return func.HttpResponse(
-                "",
-                status_code=200,
-                headers=get_cors_headers()
-            )
+    if req.method == "OPTIONS":
+        return ResponseBuilder.success(status_code=200)
         
         # Get user ID using secure authentication
-        try:
+    try:
             user_id = get_user_id_from_request(req)
-        except ValueError as auth_error:
-            return func.HttpResponse(
-                json.dumps({"error": "Authentication required", "details": str(auth_error)}),
-                status_code=401,
-                headers=get_cors_headers()
-            )
+    except ValueError as e:
+        raise AuthenticationError(f"Authentication required: {str(e)}")
         
-        if req.method == "POST":
-            # Add new transaction
-            try:
-                req_body = req.get_json()
-                if not req_body:
-                    headers = get_cors_headers()
-                    headers["Content-Type"] = "application/json"
-                    return func.HttpResponse(
-                        json.dumps({"error": "Request body is required"}),
-                        status_code=400,
-                        headers=headers
-                    )
-                
-                # Sanitize input
-                transaction_data = sanitize_user_input(req_body)
-                
-                # Validate data
-                is_valid, errors = validate_transaction_data(transaction_data)
-                if not is_valid:
-                    headers = get_cors_headers()
-                    headers["Content-Type"] = "application/json"
-                    return func.HttpResponse(
-                        json.dumps({"error": "Validation failed", "details": errors}),
-                        status_code=400,
-                        headers=headers
-                    )
-                
-                # Add transaction
-                new_transaction = add_transaction(
-                    account_id=transaction_data['account_id'],
-                    user_id=user_id,
-                    amount=float(transaction_data['amount']),
-                    description=transaction_data['description'],
-                    category=transaction_data['category'],
-                    transaction_type=transaction_data['transaction_type'],
-                    date=transaction_data.get('transaction_date'),
-                    is_recurring=transaction_data.get('is_recurring', False),
-                    recurring_frequency=transaction_data.get('recurring_frequency', 'monthly'),
-                    recurring_start_date=transaction_data.get('recurring_start_date')
-                )
-                
-                headers = get_cors_headers()
-                headers["Content-Type"] = "application/json"
-                return func.HttpResponse(
-                    json.dumps(new_transaction),
-                    status_code=201,
-                    headers=headers
-                )
-                
-            except Exception as e:
-                logging.error(f"Error adding transaction: {str(e)}")
-                headers = get_cors_headers()
-                headers["Content-Type"] = "application/json"
-                return func.HttpResponse(
-                    json.dumps({"error": "Failed to add transaction", "details": str(e)}),
-                    status_code=500,
-                    headers=headers
-                )
-    
-    except Exception as e:
-        logging.error(f"Error in transactions API: {str(e)}")
-        headers = get_cors_headers()
-        headers["Content-Type"] = "application/json"
-        return func.HttpResponse(
-            json.dumps({"error": "Internal server error", "details": str(e)}),
-            status_code=500,
-            headers=headers
+    if req.method == "POST":
+        req_body = req.get_json()
+        if not req_body:
+            raise ValidationError("Request body is required")
+            
+        # Sanitize input
+        transaction_data = sanitize_user_input(req_body)
+        
+        # Validate data - this will raise ValidationError if invalid
+        validate_transaction_data(transaction_data)
+        
+        # Add transaction
+        new_transaction = add_transaction(
+            account_id=transaction_data['account_id'],
+            user_id=user_id,
+            amount=float(transaction_data['amount']),
+            description=transaction_data['description'],
+            category=transaction_data['category'],
+            transaction_type=transaction_data['transaction_type'],
+            date=transaction_data.get('transaction_date'),
+            is_recurring=transaction_data.get('is_recurring', False),
+            recurring_frequency=transaction_data.get('recurring_frequency', 'monthly'),
+            recurring_start_date=transaction_data.get('recurring_start_date')
         )
+        
+        return ResponseBuilder.success(data=new_transaction, status_code=201)
 
-@app.route(route="transactions/{transaction_id}", methods=["DELETE", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+@app.route(route="transactions/{transaction_id}", methods=["DELETE", "PUT", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 def delete_transaction_api(req: func.HttpRequest) -> func.HttpResponse:
     """API endpoint for deleting transactions"""
     try:
@@ -1599,6 +1675,75 @@ def delete_transaction_api(req: func.HttpRequest) -> func.HttpResponse:
                     json.dumps(result),
                     status_code=400,
                     headers=headers
+                )
+        
+        elif req.method == "PUT":
+            # Get transaction ID from route parameter
+            transaction_id = req.route_params.get('transaction_id')
+            if not transaction_id:
+                return func.HttpResponse(
+                    json.dumps({"error": "Transaction ID is required"}),
+                    status_code=400,
+                    headers={"Content-Type": "application/json"}
+                )
+            
+            # Get request body
+            try:
+                req_body = req.get_json()
+                if not req_body:
+                    return func.HttpResponse(
+                        json.dumps({"error": "Request body is required"}),
+                        status_code=400,
+                        headers={"Content-Type": "application/json"}
+                    )
+                
+                # Sanitize input
+                transaction_data = sanitize_user_input(req_body)
+                
+                # Validate required fields
+                required_fields = ['amount', 'description', 'category', 'transaction_type']
+                for field in required_fields:
+                    if field not in transaction_data:
+                        return func.HttpResponse(
+                            json.dumps({"error": f"Missing required field: {field}"}),
+                            status_code=400,
+                            headers={"Content-Type": "application/json"}
+                        )
+                
+                # Update transaction
+                result = update_transaction(
+                    transaction_id=transaction_id,
+                    user_id=user_id,
+                    amount=float(transaction_data['amount']),
+                    description=transaction_data['description'],
+                    category=transaction_data['category'],
+                    transaction_type=transaction_data['transaction_type'],
+                    date=transaction_data.get('transaction_date')
+                )
+                
+                if result.get('success'):
+                    headers = get_cors_headers()
+                    headers["Content-Type"] = "application/json"
+                    return func.HttpResponse(
+                        json.dumps(result),
+                        status_code=200,
+                        headers=headers
+                    )
+                else:
+                    headers = get_cors_headers()
+                    headers["Content-Type"] = "application/json"
+                    return func.HttpResponse(
+                        json.dumps(result),
+                        status_code=400,
+                        headers=headers
+                    )
+                    
+            except Exception as e:
+                logging.error(f"Error updating transaction: {str(e)}")
+                return func.HttpResponse(
+                    json.dumps({"error": "Failed to update transaction", "details": str(e)}),
+                    status_code=500,
+                    headers={"Content-Type": "application/json"}
                 )
     
     except Exception as e:
