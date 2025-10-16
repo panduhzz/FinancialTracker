@@ -61,14 +61,10 @@ function formatCurrency(value) {
 
 // Chart rendering functions
 function renderAccountBalanceChart(canvasId, data) {
-  console.log(`Looking for canvas element with id: ${canvasId}`);
   const ctx = document.getElementById(canvasId);
   if (!ctx) {
-    console.error(`Canvas element with id '${canvasId}' not found`);
-    console.log('Available canvas elements:', document.querySelectorAll('canvas'));
     return;
   }
-  console.log('Canvas element found:', ctx);
   
   // Destroy existing chart if it exists
   if (chartInstances[canvasId]) {
@@ -162,11 +158,7 @@ function renderAccountBalanceChart(canvasId, data) {
 
 // API functions for loading chart data
 async function loadAccountBalanceChart() {
-  console.log('loadAccountBalanceChart function called');
   try {
-    const userId = localStorage.getItem('userId') || 'dev-user-123';
-    console.log('Loading chart data for user:', userId);
-    
     const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/analytics/account-balance?months=12`, {
       method: 'GET'
     });
@@ -176,16 +168,13 @@ async function loadAccountBalanceChart() {
     }
     
     const data = await response.json();
-    console.log('Chart data received:', data);
     
     if (data.error) {
-      console.error('Error loading account balance data:', data.error);
       showMessage('Error loading chart data: ' + data.error, 'error');
       return;
     }
     
     // Render the chart
-    console.log('Rendering chart with canvas ID: financialOverviewChart');
     renderAccountBalanceChart('financialOverviewChart', data);
     
   } catch (error) {
@@ -215,6 +204,3 @@ function destroyAllCharts() {
 }
 
 // Use centralized showMessage from utils.js
-
-// Debug: Confirm charts.js is loaded
-console.log('charts.js loaded successfully - loadAccountBalanceChart function available:', typeof loadAccountBalanceChart);

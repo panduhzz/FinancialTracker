@@ -26,33 +26,13 @@ async function initializePage() {
     // Log API configuration for debugging
     API_CONFIG.logConfig();
     
-    // Check if user is authenticated
-    if (!window.msalInstance) {
-      // Initialize MSAL if not already done
-      const msalConfig = {
-        auth: {
-          clientId: 'e8c1227e-f95c-4a0a-bf39-f3ce4c78c781',
-          authority: 'https://PanduhzProject.b2clogin.com/PanduhzProject.onmicrosoft.com/B2C_1_testonsiteflow',
-          knownAuthorities: ['PanduhzProject.b2clogin.com'],
-          redirectUri: window.location.origin,
-        },
-      };
-      
-      window.msalInstance = new msal.PublicClientApplication(msalConfig);
-      window.msalInstance.enableAccountStorageEvents();
-    }
-
-    const accounts = window.msalInstance.getAllAccounts();
+    // Use centralized auth service
+    const authService = AuthService.getInstance();
+    await authService.initialize();
     
-    if (accounts && accounts.length > 0) {
-      const account = accounts[0];
-      currentUser = {
-        id: account.idTokenClaims.oid,
-        name: `${account.idTokenClaims.given_name} ${account.idTokenClaims.family_name}`,
-        email: account.idTokenClaims.emails[0]
-      };
-      
-      
+    const currentUser = await authService.getCurrentUser();
+    
+    if (currentUser) {
       // Update UI with user info
       document.getElementById('userName').textContent = `Welcome, ${currentUser.name}!`;
       
@@ -122,7 +102,18 @@ async function loadUserAccounts() {
     });
     
     if (response.ok) {
-      userAccounts = await response.json();
+      const data = await response.json();
+      
+      // Handle different possible response formats
+      if (Array.isArray(data)) {
+        userAccounts = data;
+      } else if (data && Array.isArray(data.accounts)) {
+        userAccounts = data.accounts;
+      } else if (data && Array.isArray(data.data)) {
+        userAccounts = data.data;
+      } else {
+        userAccounts = [];
+      }
     } else {
       userAccounts = [];
     }
@@ -152,7 +143,8 @@ function updateFinancialSummary() {
 function displayAccounts() {
   const container = document.getElementById('accountsList');
   
-  if (userAccounts.length === 0) {
+  // Ensure userAccounts is an array before checking length
+  if (!Array.isArray(userAccounts) || userAccounts.length === 0) {
     container.innerHTML = `
       <div class="no-data">
         <p>No accounts found. Create your first account to get started!</p>
@@ -284,6 +276,9 @@ function displayAccountSummary(accountId, summary) {
             </div>
             <div class="transaction-actions">
               <div class="transaction-amount ${amountClass}">${amountDisplay}</div>
+              <button class="btn btn-small btn-edit" onclick="setEditTransactionData('${transaction.RowKey}', '${accountId}', '${transaction.description.replace(/'/g, "\\'")}', '${transaction.category.replace(/'/g, "\\'")}', '${transaction.transaction_type}', '${transaction.amount}', '${transaction.transaction_date}')" title="Edit transaction">
+                <span class="icon">✏️</span>
+              </button>
               <button class="btn btn-small btn-danger" onclick="confirmDeleteTransaction('${transaction.RowKey}', '${transaction.description}', '${accountId}')" title="Delete transaction">
                 <span class="icon">🗑️</span>
               </button>
@@ -602,6 +597,9 @@ function displaySearchResults(searchData) {
         </div>
         <div class="search-result-actions">
           <div class="search-result-amount ${amountClass}">${amountDisplay}</div>
+          <button class="btn btn-small btn-edit" onclick="setEditTransactionData('${transaction.RowKey}', '${transaction.account_id}', '${transaction.description.replace(/'/g, "\\'")}', '${transaction.category.replace(/'/g, "\\'")}', '${transaction.transaction_type}', '${transaction.amount}', '${transaction.transaction_date}')" title="Edit transaction">
+            <span class="icon">✏️</span>
+          </button>
           <button class="btn btn-small btn-danger" onclick="confirmDeleteTransaction('${transaction.RowKey}', '${transaction.description}', '${transaction.account_id}')" title="Delete transaction">
             <span class="icon">🗑️</span>
           </button>
@@ -894,12 +892,209 @@ async function getTransactionIdsForTemplate(template) {
   }
 }
 
+// Edit Transaction Functions
+let currentEditTransactionId = null;
+let currentEditAccountId = null;
+let currentEditTransactionData = null;
+
+function setEditTransactionData(transactionId, accountId, description, category, transactionType, amount, transactionDate) {
+  // Store the transaction data
+  currentEditTransactionId = transactionId;
+  currentEditAccountId = accountId;
+  currentEditTransactionData = {
+    RowKey: transactionId,
+    description: description,
+    category: category,
+    transaction_type: transactionType,
+    amount: amount,
+    transaction_date: transactionDate
+  };
+  
+  // Open the modal and populate the form
+  openEditTransactionModal();
+}
+
+function openEditTransactionModal() {
+  if (currentEditTransactionData) {
+    populateEditForm(currentEditTransactionData);
+  } else {
+    showMessage('No transaction data available', 'error');
+    return;
+  }
+  
+  document.getElementById('editTransactionModal').style.display = 'block';
+  
+  // Prevent background scrolling
+  document.body.classList.add('modal-open');
+}
+
+function closeEditTransactionModal() {
+  document.getElementById('editTransactionModal').style.display = 'none';
+  
+  // Restore background scrolling
+  document.body.classList.remove('modal-open');
+  
+  // Clear form
+  document.getElementById('editTransactionForm').reset();
+  currentEditTransactionId = null;
+  currentEditAccountId = null;
+  currentEditTransactionData = null;
+}
+
+function populateEditForm(transaction) {
+  try {
+    // Populate the form
+    document.getElementById('editTransactionAmount').value = Math.abs(parseFloat(transaction.amount));
+    document.getElementById('editTransactionDescription').value = transaction.description;
+    document.getElementById('editTransactionCategory').value = transaction.category;
+    document.getElementById('editTransactionType').value = transaction.transaction_type;
+    
+    // Format date for input
+    const transactionDate = new Date(transaction.transaction_date);
+    const formattedDate = transactionDate.toISOString().split('T')[0];
+    document.getElementById('editTransactionDate').value = formattedDate;
+  } catch (error) {
+    console.error('Error populating edit form:', error);
+    showMessage('Error loading transaction data', 'error');
+    closeEditTransactionModal();
+  }
+}
+
+async function loadTransactionForEdit(transactionId) {
+  try {
+        // We need to get the transaction details
+        // Since we don't have a direct get transaction endpoint, we'll search for it with a higher limit
+        const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/transactions/search?limit=100`, {
+          method: 'GET'
+        });
+        
+        if (response.ok) {
+          const searchData = await response.json();
+          const transactions = searchData.transactions || [];
+          
+          // Find the specific transaction
+          const transaction = transactions.find(t => t.RowKey === transactionId);
+          
+          if (transaction) {
+            populateEditForm(transaction);
+          } else {
+            showMessage('Transaction not found in recent transactions. Please try again.', 'error');
+            closeEditTransactionModal();
+          }
+        } else {
+          const errorText = await response.text();
+          console.error('Error response:', errorText);
+          showMessage('Error loading transaction details', 'error');
+          closeEditTransactionModal();
+        }
+  } catch (error) {
+    console.error('Error loading transaction for edit:', error);
+    showMessage('Error loading transaction details', 'error');
+    closeEditTransactionModal();
+  }
+}
+
+// Handle edit transaction form submission
+document.addEventListener('DOMContentLoaded', function() {
+  const editForm = document.getElementById('editTransactionForm');
+  if (editForm) {
+    editForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      
+      if (!currentEditTransactionId) {
+        showMessage('No transaction selected for editing', 'error');
+        return;
+      }
+      
+      try {
+        showLoading(true);
+        
+        // Get form data
+        const formData = new FormData(editForm);
+        const amount = parseFloat(formData.get('editTransactionAmount'));
+        const description = formData.get('editTransactionDescription');
+        const category = formData.get('editTransactionCategory');
+        const transactionType = formData.get('editTransactionType');
+        const date = formData.get('editTransactionDate');
+        
+        // Validate required fields
+        if (!amount || !description || !category || !transactionType || !date) {
+          showMessage('Please fill in all required fields', 'error');
+          return;
+        }
+        
+        // Make sure amount is positive
+        const finalAmount = Math.abs(amount);
+        
+        // Prepare request data
+        const requestData = {
+          amount: finalAmount,
+          description: description,
+          category: category,
+          transaction_type: transactionType,
+          transaction_date: date
+        };
+        
+        // Update transaction
+        const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/transactions/${currentEditTransactionId}`, {
+          method: 'PUT',
+          body: JSON.stringify(requestData)
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          showMessage('Transaction updated successfully!', 'success');
+          
+          // Invalidate cache after successful update
+          if (window.cacheInvalidation) {
+            window.cacheInvalidation.invalidateTransactionData();
+            window.cacheInvalidation.invalidateUserData();
+            window.cacheInvalidation.invalidateAccountData(currentEditAccountId);
+          }
+          
+          // Close modal
+          closeEditTransactionModal();
+          
+          // Reload data to reflect changes
+          await loadUserData();
+          updateFinancialSummary();
+          displayAccounts();
+          
+          // Reload any expanded account summaries
+          const expandedAccountIds = Array.from(expandedAccounts);
+          for (const accountId of expandedAccountIds) {
+            await loadAccountSummary(accountId);
+          }
+          
+        } else {
+          const errorText = await response.text();
+          console.error('Update transaction error response:', errorText);
+          let errorMessage = 'Unknown error';
+          try {
+            const errorData = JSON.parse(errorText);
+            errorMessage = errorData.error || errorData.details || errorText;
+          } catch (e) {
+            errorMessage = errorText;
+          }
+          showMessage(`Error updating transaction: ${errorMessage}`, 'error');
+        }
+      } catch (error) {
+        console.error('Error updating transaction:', error);
+        showMessage('Network error while updating transaction. Please try again.', 'error');
+      } finally {
+        showLoading(false);
+      }
+    });
+  }
+});
+
 // Close modals when clicking outside
 window.onclick = function(event) {
   const searchModal = document.getElementById('searchModal');
   const recurringModal = document.getElementById('recurringModal');
   const accountSummaryModal = document.getElementById('accountSummaryModal');
   const deleteAccountModal = document.getElementById('deleteAccountModal');
+  const editTransactionModal = document.getElementById('editTransactionModal');
   
   if (event.target === searchModal) {
     closeSearchModal();
@@ -909,6 +1104,8 @@ window.onclick = function(event) {
     closeAccountSummaryModal();
   } else if (event.target === deleteAccountModal) {
     closeDeleteAccountModal();
+  } else if (event.target === editTransactionModal) {
+    closeEditTransactionModal();
   }
 }
 

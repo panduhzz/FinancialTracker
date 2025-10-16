@@ -58,18 +58,19 @@ function formatTransactionDate(dateString) {
 }
 
 // Sign out functionality
-function handleSignOut() {
+async function handleSignOut() {
   // Clear cache before signing out for security
   if (window.dataCache) {
     console.log('🧹 Clearing cache on sign out for security');
     window.dataCache.clear();
   }
   
-  if (window.msalInstance) {
-    window.msalInstance.logout();
-    localStorage.clear();
-    window.location.replace('/index.html');
-  } else {
+  try {
+    const authService = AuthService.getInstance();
+    await authService.signOut();
+  } catch (error) {
+    console.error('Error during sign out:', error);
+  } finally {
     localStorage.clear();
     window.location.replace('/index.html');
   }

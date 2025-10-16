@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>All Accounts - Panduhz Financial Tracker</title>
   <link rel="stylesheet" href="accounts.css">
-                                                                                                                                  <script>
+                                                                                                                                            <script>
   window.REACT_APP_API_URL = 'http://localhost:7071/api';
   window.REACT_APP_UPLOAD_API_URL = 'http://localhost:7072/api';
   window.REACT_APP_ENVIRONMENT = 'development';
@@ -194,6 +194,64 @@
     </div>
   </div>
 
+  <!-- Edit Transaction Modal -->
+  <div id="editTransactionModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Edit Transaction</h2>
+        <span class="close" onclick="closeEditTransactionModal()">&times;</span>
+      </div>
+      <form id="editTransactionForm" class="modal-body">
+        <div class="form-group">
+          <label for="editTransactionAmount">Amount *</label>
+          <input type="number" id="editTransactionAmount" name="editTransactionAmount" step="0.01" required placeholder="0.00">
+        </div>
+        
+        <div class="form-group">
+          <label for="editTransactionDescription">Description *</label>
+          <input type="text" id="editTransactionDescription" name="editTransactionDescription" required placeholder="e.g., Grocery shopping">
+        </div>
+        
+        <div class="form-group">
+          <label for="editTransactionCategory">Category *</label>
+          <select id="editTransactionCategory" name="editTransactionCategory" required>
+            <option value="">Select category</option>
+            <option value="Food & Dining">Food & Dining</option>
+            <option value="Transportation">Transportation</option>
+            <option value="Shopping">Shopping</option>
+            <option value="Entertainment">Entertainment</option>
+            <option value="Bills & Utilities">Bills & Utilities</option>
+            <option value="Healthcare">Healthcare</option>
+            <option value="Education">Education</option>
+            <option value="Travel">Travel</option>
+            <option value="Income">Income</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label for="editTransactionType">Transaction Type *</label>
+          <select id="editTransactionType" name="editTransactionType" required>
+            <option value="">Select type</option>
+            <option value="income">Income</option>
+            <option value="expense">Expense</option>
+            <option value="transfer">Transfer</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label for="editTransactionDate">Date *</label>
+          <input type="date" id="editTransactionDate" name="editTransactionDate" required>
+        </div>
+        
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeEditTransactionModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Update Transaction</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Loading overlay -->
   <div id="loadingOverlay" class="loading-overlay" style="display: none;">
     <div class="loading-spinner"></div>
@@ -204,6 +262,7 @@
   <script src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
   
   <!-- Include centralized configuration and utilities -->
+  <script src="authService.js"></script>
   <script src="config.js"></script>
   <script src="utils.js"></script>
   <script src="cache.js"></script>
