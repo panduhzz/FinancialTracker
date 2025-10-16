@@ -2,6 +2,7 @@
 let currentUser = null;
 let userAccounts = [];
 let recentTransactions = [];
+let financialSummary = {};
 
 // Use centralized API_CONFIG from config.js
 
@@ -24,32 +25,13 @@ async function initializePage() {
     // Log API configuration for debugging
     API_CONFIG.logConfig();
     
-    // Check if user is authenticated
-    if (!window.msalInstance) {
-      // Initialize MSAL if not already done
-      const msalConfig = {
-        auth: {
-          clientId: 'e8c1227e-f95c-4a0a-bf39-f3ce4c78c781',
-          authority: 'https://PanduhzProject.b2clogin.com/PanduhzProject.onmicrosoft.com/B2C_1_testonsiteflow',
-          knownAuthorities: ['PanduhzProject.b2clogin.com'],
-          redirectUri: window.location.origin,
-        },
-      };
-      
-      window.msalInstance = new msal.PublicClientApplication(msalConfig);
-      window.msalInstance.enableAccountStorageEvents();
-    }
-
-    const accounts = window.msalInstance.getAllAccounts();
+    // Use centralized auth service
+    const authService = AuthService.getInstance();
+    await authService.initialize();
     
-    if (accounts && accounts.length > 0) {
-      const account = accounts[0];
-      currentUser = {
-        id: account.idTokenClaims.oid,
-        name: `${account.idTokenClaims.given_name} ${account.idTokenClaims.family_name}`,
-        email: account.idTokenClaims.emails[0]
-      };
-      
+    const currentUser = await authService.getCurrentUser();
+    
+    if (currentUser) {
       // Update UI with user info
       document.getElementById('userName').textContent = `Welcome, ${currentUser.name}!`;
       
@@ -69,8 +51,9 @@ async function loadUserData() {
   try {
     showLoading(true);
     
-    // Load accounts and transactions first
+    // Load financial summary, accounts and transactions
     await Promise.all([
+      loadFinancialSummary(),
       loadUserAccounts(),
       loadRecentTransactions()
     ]);
@@ -101,15 +84,43 @@ async function loadUserAccounts() {
     });
     
     if (response.ok) {
-      userAccounts = await response.json();
+      const data = await response.json();
+      
+      // Handle different possible response formats
+      if (Array.isArray(data)) {
+        userAccounts = data;
+      } else if (data && Array.isArray(data.data)) {
+        userAccounts = data.data;
+      } else if (data && Array.isArray(data.accounts)) {
+        userAccounts = data.accounts;
+      } else {
+        userAccounts = [];
+      }
+      
       populateAccountSelect();
     } else {
-      console.log('No accounts found or error loading accounts. Status:', response.status);
       userAccounts = [];
     }
   } catch (error) {
     console.error('Error loading accounts:', error);
     userAccounts = [];
+  }
+}
+
+async function loadFinancialSummary() {
+  try {
+    const response = await makeAuthenticatedRequest(`${API_CONFIG.getBaseUrl()}/financial-summary`, {
+      method: 'GET'
+    });
+    
+    if (response.ok) {
+      financialSummary = await response.json();
+    } else {
+      financialSummary = {};
+    }
+  } catch (error) {
+    console.error('Error loading financial summary:', error);
+    financialSummary = {};
   }
 }
 
@@ -134,36 +145,47 @@ async function loadRecentTransactions() {
 
 function updateDashboard() {
   // Update total accounts
-  document.getElementById('totalAccounts').textContent = userAccounts.length;
+  document.getElementById('totalAccounts').textContent = financialSummary.total_accounts || userAccounts.length;
   
-  // Update total balance
-  const totalBalance = userAccounts.reduce((sum, account) => {
+  // Update total balance - use financial summary if available, otherwise calculate from accounts
+  const totalBalance = financialSummary.total_balance || userAccounts.reduce((sum, account) => {
     const balance = account.current_balance || 0;
     return sum + balance;
   }, 0);
   document.getElementById('totalBalance').textContent = `$${totalBalance.toFixed(2)}`;
   
-  // Update monthly transactions
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
-  const monthlyCount = recentTransactions.filter(t => {
-    const transactionDate = new Date(t.transaction_date);
-    return transactionDate.getMonth() === currentMonth && transactionDate.getFullYear() === currentYear;
-  }).length;
+  // Update monthly transactions - use financial summary if available, otherwise calculate from recent transactions
+  let monthlyCount = financialSummary.monthly_transactions;
+  if (monthlyCount === undefined || monthlyCount === null) {
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    monthlyCount = recentTransactions.filter(t => {
+      const transactionDate = new Date(t.transaction_date);
+      return transactionDate.getMonth() === currentMonth && transactionDate.getFullYear() === currentYear;
+    }).length;
+  }
   
   document.getElementById('monthlyTransactions').textContent = `${monthlyCount} transactions`;
 }
 
 function populateAccountSelect() {
   const select = document.getElementById('transactionAccount');
+  if (!select) {
+    return;
+  }
+  
   select.innerHTML = '<option value="">Select an account</option>';
   
-  userAccounts.forEach(account => {
-    const option = document.createElement('option');
-    option.value = account.account_id;
-    option.textContent = `${account.account_name} (${account.account_type}) - $${account.current_balance.toFixed(2)}`;
-    select.appendChild(option);
-  });
+  // Ensure userAccounts is an array before iterating
+  if (Array.isArray(userAccounts) && userAccounts.length > 0) {
+    userAccounts.forEach(account => {
+      const option = document.createElement('option');
+      option.value = account.account_id;
+      const balance = account.current_balance || 0;
+      option.textContent = `${account.account_name} (${account.account_type}) - $${balance.toFixed(2)}`;
+      select.appendChild(option);
+    });
+  }
 }
 
 // Use centralized formatTransactionDate from utils.js
@@ -225,8 +247,17 @@ function closeCreateAccountModal() {
   document.body.style.overflow = 'auto';
 }
 
-function openAddTransactionModal() {
-  if (userAccounts.length === 0) {
+async function openAddTransactionModal() {
+  // Ensure accounts are loaded
+  if (!Array.isArray(userAccounts) || userAccounts.length === 0) {
+    await loadUserAccounts();
+  }
+  
+  // Always populate the account select first
+  populateAccountSelect();
+  
+  // Check if we have accounts after populating
+  if (!Array.isArray(userAccounts) || userAccounts.length === 0) {
     showMessage('Please create a bank account first before adding transactions.', 'error');
     return;
   }
@@ -366,6 +397,9 @@ document.getElementById('createAccountForm').addEventListener('submit', async fu
       
       showMessage('Bank account created successfully!', 'success');
       closeCreateAccountModal();
+      
+      // Reload accounts to include the new account
+      await loadUserAccounts();
       updateDashboard();
       populateAccountSelect();
     } else {
@@ -560,22 +594,8 @@ function formatFileSize(bytes) {
 }
 
 async function getAuthToken() {
-  try {
-    const account = window.msalInstance.getAllAccounts()[0];
-    if (!account) {
-      throw new Error('User not authenticated');
-    }
-    
-    const tokenResponse = await window.msalInstance.acquireTokenSilent({
-      scopes: ['https://PanduhzProject.onmicrosoft.com/api://e8c1227e-f95c-4a0a-bf39-f3ce4c78c781/access_as_user'],
-      account: account
-    });
-    
-    return tokenResponse.accessToken;
-  } catch (error) {
-    console.error('Error getting auth token:', error);
-    throw error;
-  }
+  const authService = AuthService.getInstance();
+  return await authService.getToken();
 }
 
 async function processStatement() {

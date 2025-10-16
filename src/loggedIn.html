@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <title>Welcome to Panduhz Financial Tracker</title>
   <link rel="stylesheet" href="loggedIn.css">
-                                                                                                                                          <script>
+                                                                                                                                                    <script>
   window.REACT_APP_API_URL = 'http://localhost:7071/api';
   window.REACT_APP_UPLOAD_API_URL = 'http://localhost:7072/api';
   window.REACT_APP_ENVIRONMENT = 'development';
@@ -55,56 +55,41 @@
   <script src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
   
   <!-- Include centralized configuration and utilities -->
+  <script src="authService.js"></script>
   <script src="config.js"></script>
   <script src="utils.js"></script>
   <script src="auth.js"></script>
 
   <script>
     // Initialize when page loads
-    window.onload = function() {
+    window.onload = async function() {
+      const authService = AuthService.getInstance();
+      await authService.initialize();
       
-      if (!window.msalInstance) {
-        const msalConfig = {
-          auth: {
-            clientId: 'e8c1227e-f95c-4a0a-bf39-f3ce4c78c781',
-            authority: 'https://PanduhzProject.b2clogin.com/PanduhzProject.onmicrosoft.com/B2C_1_testonsiteflow',
-            knownAuthorities: ['PanduhzProject.b2clogin.com'],
-            redirectUri: window.location.origin,
-          },
-        };
+      const currentUser = await authService.getCurrentUser();
+      
+      if (currentUser) {
+        console.log('User Details:', currentUser);
         
-        window.msalInstance = new msal.PublicClientApplication(msalConfig);
-        window.msalInstance.enableAccountStorageEvents();
-      }
-      
-      const accountSession = window.msalInstance.getAllAccounts();
-      
-      if (accountSession && accountSession.length > 0) {
-        const account = accountSession[0];
-        console.log('Account Details:', account);
+        // Parse user name
+        const nameParts = currentUser.name.split(' ');
+        const firstName = nameParts[0] || 'User';
+        const lastName = nameParts.slice(1).join(' ') || '';
         
-        if (account.idTokenClaims) {
-          // Get user information from token claims
-          const firstName = account.idTokenClaims.given_name || 'User';
-          const lastName = account.idTokenClaims.family_name || '';
-          const email = account.idTokenClaims.emails[0] || 'No email available';
-          const userId = account.idTokenClaims.oid;
-          
-          // Update the UI with user information
-          updateUserInterface(firstName, lastName, email, userId);
-          
-          // Log user information for debugging
-          console.log('User logged in successfully!');
-          console.log('First Name:', firstName);
-          console.log('Last Name:', lastName);
-          console.log('Email:', email);
-          console.log('User ID:', userId);
-          
-          // Load the financial overview chart
-          setTimeout(() => {
-            loadFinancialOverviewChart();
-          }, 1000);
-        }
+        // Update the UI with user information
+        updateUserInterface(firstName, lastName, currentUser.email, currentUser.id);
+        
+        // Log user information for debugging
+        console.log('User logged in successfully!');
+        console.log('First Name:', firstName);
+        console.log('Last Name:', lastName);
+        console.log('Email:', currentUser.email);
+        console.log('User ID:', currentUser.id);
+        
+        // Load the financial overview chart
+        setTimeout(() => {
+          loadFinancialOverviewChart();
+        }, 1000);
       } else {
         // If no account found, redirect to login
         window.location.replace('/index.html');
