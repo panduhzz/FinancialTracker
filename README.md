@@ -194,3 +194,9 @@ Deployment is handled automatically via GitHub Actions on push to `main`:
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+---
+
+<div align="center">
+  <sub>✏️ This README was edited by <a href="https://claude.ai">Claude</a> — Anthropic's AI assistant</sub>
+</div>
