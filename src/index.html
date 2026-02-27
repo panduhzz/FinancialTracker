@@ -135,11 +135,14 @@
       }
     }
   </style>
-                                                                                                                                            <script>
+                                                                                                                                                <script>
   window.REACT_APP_API_URL = 'http://localhost:7071/api';
   window.REACT_APP_UPLOAD_API_URL = 'http://localhost:7072/api';
   window.REACT_APP_ENVIRONMENT = 'development';
   window.REACT_APP_DEBUG = true;
+  window.REACT_APP_FIREBASE_API_KEY = 'AIzaSyB8sI0QryEvjMZaBoWfwuOfn5FHRqc-xeo';
+  window.REACT_APP_FIREBASE_AUTH_DOMAIN = 'panduhz-tracker.firebaseapp.com';
+  window.REACT_APP_FIREBASE_PROJECT_ID = 'panduhz-tracker';
 </script>
 </head>
 <body>
@@ -172,8 +175,9 @@
     </div>
   </div>
 
-  <!-- Include the MSAL.js library -->
-  <script src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
+  <!-- Firebase compat SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <!-- Include centralized configuration and utilities -->
   <script src="authService.js"></script>
   <script src="config.js"></script>
@@ -221,25 +225,16 @@
     };
 
     // Check if user is already logged in when the page loads
-    window.addEventListener('load', function() {
-      setTimeout(async () => {
-        if (window.msalInstance) {
-          // Wait for MSAL to be fully initialized
-          await window.msalInstance.initialize();
-          
-          // Wait a bit for accounts to be fully loaded
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-          const currentAccounts = window.msalInstance.getAllAccounts();
-          if (currentAccounts && currentAccounts.length > 0) {
-            // User is already logged in, redirect immediately to login page
-            window.location.replace(window.getNavigationUrl('/login', '/loggedIn.html'));
-            return;
-          }
+    window.addEventListener('load', async function() {
+      const authService = AuthService.getInstance();
+      await authService.initialize();
+      firebase.auth().onAuthStateChanged(function(user) {
+        if (user) {
+          window.location.replace(window.getNavigationUrl('/login', '/loggedIn.html'));
+        } else {
+          showLoginForm();
         }
-        // If we reach here, user is not logged in, show the login form
-        showLoginForm();
-      }, 200); // Increased timeout to give more time for initialization
+      });
     });
   </script>
 </body>

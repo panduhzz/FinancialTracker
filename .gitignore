@@ -1,3 +1,10 @@
 azurite/
 *.code-workspace
 .cursor/
+
+# Environment files — never commit secrets
+.env
+.env.*
+
+# Dependencies
+node_modules/

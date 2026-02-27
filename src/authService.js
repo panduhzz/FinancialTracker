@@ -1,22 +1,12 @@
 // Centralized Authentication Service
-// Singleton class to manage MSAL authentication, token acquisition, and caching
+// Firebase compat SDK wrapper — same public interface as the previous MSAL version
 
 class AuthService {
   static instance = null;
-  
+
   constructor() {
-    this.msalInstance = null;
-    this.config = {
-      auth: {
-        clientId: 'e8c1227e-f95c-4a0a-bf39-f3ce4c78c781',
-        authority: 'https://PanduhzProject.b2clogin.com/PanduhzProject.onmicrosoft.com/B2C_1_testonsiteflow',
-        knownAuthorities: ['PanduhzProject.b2clogin.com'],
-        redirectUri: window.location.origin,
-      },
-      api: {
-        scopes: ['e8c1227e-f95c-4a0a-bf39-f3ce4c78c781/access_as_user']
-      }
-    };
+    this._initialized = false;
+    this._auth = null;
   }
 
   static getInstance() {
@@ -27,33 +17,38 @@ class AuthService {
   }
 
   async initialize() {
-    if (!this.msalInstance) {
-      this.msalInstance = new msal.PublicClientApplication(this.config);
-      this.msalInstance.enableAccountStorageEvents();
-      
-      // Make globally accessible for backward compatibility
-      window.msalInstance = this.msalInstance;
-      
-      // Add event callbacks
-      this.msalInstance.addEventCallback((message) => {
-        if (message.eventType === msal.EventType.LOGIN_SUCCESS) {
-          console.log('Login successful');
-        }
-      });
+    if (!this._initialized) {
+      const firebaseConfig = {
+        apiKey: window.REACT_APP_FIREBASE_API_KEY,
+        authDomain: window.REACT_APP_FIREBASE_AUTH_DOMAIN,
+        projectId: window.REACT_APP_FIREBASE_PROJECT_ID,
+      };
+
+      if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+      }
+
+      this._auth = firebase.auth();
+      this._initialized = true;
     }
-    return this.msalInstance;
+    return this._auth;
   }
 
   async signIn() {
-    const msalInstance = await this.initialize();
-    
-    const loginRequest = {
-      scopes: ['openid', 'profile', 'offline_access', 'https://PanduhzProject.onmicrosoft.com/api://e8c1227e-f95c-4a0a-bf39-f3ce4c78c781/access_as_user'],
-    };
-
+    const auth = await this.initialize();
+    const provider = new firebase.auth.GoogleAuthProvider();
     try {
-      const response = await msalInstance.loginPopup(loginRequest);
-      return response;
+      const result = await auth.signInWithPopup(provider);
+      // Map to an MSAL-compatible shape so auth.js works unchanged
+      const nameParts = (result.user.displayName || '').split(' ');
+      return {
+        account: {
+          idTokenClaims: {
+            given_name: nameParts[0] || result.user.email,
+            family_name: nameParts.slice(1).join(' ') || '',
+          }
+        }
+      };
     } catch (error) {
       console.error('Login failed:', error);
       throw error;
@@ -61,9 +56,9 @@ class AuthService {
   }
 
   async signOut() {
-    const msalInstance = await this.initialize();
+    const auth = await this.initialize();
     try {
-      await msalInstance.logoutPopup();
+      await auth.signOut();
     } catch (error) {
       console.error('Logout failed:', error);
       throw error;
@@ -71,58 +66,42 @@ class AuthService {
   }
 
   async getCurrentUser() {
-    const msalInstance = await this.initialize();
-    const accounts = msalInstance.getAllAccounts();
-    
-    if (accounts && accounts.length > 0) {
-      const account = accounts[0];
-      return {
-        id: account.idTokenClaims.oid,
-        name: `${account.idTokenClaims.given_name} ${account.idTokenClaims.family_name}`,
-        email: account.idTokenClaims.emails[0]
-      };
-    }
-    return null;
+    const auth = await this.initialize();
+    // Wait for Firebase to determine auth state (handles page-load race condition)
+    return new Promise((resolve) => {
+      const unsubscribe = auth.onAuthStateChanged((user) => {
+        unsubscribe();
+        if (user) {
+          resolve({
+            id: user.uid,
+            name: user.displayName || user.email,
+            email: user.email,
+          });
+        } else {
+          resolve(null);
+        }
+      });
+    });
   }
 
   async getToken() {
-    const msalInstance = await this.initialize();
-    const account = msalInstance.getAllAccounts()[0];
-    
-    if (!account) {
+    const auth = await this.initialize();
+    const user = auth.currentUser;
+    if (!user) {
       throw new Error('No authenticated user found');
     }
-
-    try {
-      const tokenResponse = await msalInstance.acquireTokenSilent({
-        scopes: ['https://PanduhzProject.onmicrosoft.com/api://e8c1227e-f95c-4a0a-bf39-f3ce4c78c781/access_as_user'],
-        account: account
-      });
-      return tokenResponse.accessToken;
-    } catch (error) {
-      // Try interactive if silent fails
-      try {
-        const tokenResponse = await msalInstance.acquireTokenPopup({
-          scopes: ['https://PanduhzProject.onmicrosoft.com/api://e8c1227e-f95c-4a0a-bf39-f3ce4c78c781/access_as_user']
-        });
-        return tokenResponse.accessToken;
-      } catch (popupError) {
-        console.error('Error acquiring token via popup:', popupError);
-        throw popupError;
-      }
-    }
+    return user.getIdToken();
   }
 
   // Centralized authenticated request with caching
   async makeAuthenticatedRequest(url, options = {}) {
     const method = options.method || 'GET';
     const cacheKey = `${method}_${url}`;
-    
+
     // Check cache for GET requests only
     if (method === 'GET' && window.dataCache) {
       const cached = window.dataCache.get(cacheKey);
       if (cached) {
-        // Return a response-like object that mimics fetch response
         return {
           ok: cached.ok,
           status: cached.status,
@@ -133,21 +112,21 @@ class AuthService {
         };
       }
     }
-    
+
     try {
       const token = await this.getToken();
-      
+
       const headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
         ...options.headers
       };
-      
+
       const response = await fetch(url, {
         ...options,
         headers
       });
-      
+
       // Cache successful GET responses
       if (method === 'GET' && response.ok && window.dataCache) {
         try {
@@ -163,7 +142,7 @@ class AuthService {
           console.warn('Failed to cache response (not JSON):', jsonError);
         }
       }
-      
+
       return response;
     } catch (error) {
       console.error('Error making authenticated request:', error);
