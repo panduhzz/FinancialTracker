@@ -202,63 +202,55 @@ def test(req: func.HttpRequest) -> func.HttpResponse:
         )
 
 # Authentication and Token Validation Functions
-def get_azure_b2c_public_keys():
-    """Get Azure AD B2C public keys for token validation"""
+def get_firebase_public_keys():
+    """Get Firebase public keys for token validation"""
     try:
-        # Azure AD B2C OpenID Connect metadata endpoint
-        # Replace with your actual B2C tenant and policy
-        metadata_url = "https://PanduhzProject.b2clogin.com/PanduhzProject.onmicrosoft.com/B2C_1_testonsiteflow/v2.0/.well-known/openid_configuration"
-        
-        response = requests.get(metadata_url, timeout=10)
+        jwks_url = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"
+        response = requests.get(jwks_url, timeout=10)
         response.raise_for_status()
-        
-        metadata = response.json()
-        jwks_url = metadata['jwks_uri']
-        
-        jwks_response = requests.get(jwks_url, timeout=10)
-        jwks_response.raise_for_status()
-        
-        return jwks_response.json()
+        return response.json()
     except Exception as e:
-        logging.error(f"Error fetching Azure B2C public keys: {str(e)}")
+        logging.error(f"Error fetching Firebase public keys: {str(e)}")
         return None
 
 def validate_token(req: func.HttpRequest) -> str:
-    """Validate Azure AD B2C token and return user ID"""
+    """Validate Firebase ID token and return user ID"""
     try:
         # Get token from Authorization header
         auth_header = req.headers.get('Authorization', '')
         if not auth_header.startswith('Bearer '):
             raise ValueError("Invalid authorization header")
-        
+
         token = auth_header[7:]  # Remove 'Bearer ' prefix
-        
-        # For development/testing, we'll do basic token validation
-        # In production, you should implement full JWT signature verification
+
         try:
-            # Decode token without verification for development
-            # In production, use proper JWT verification with public keys
+            # Decode token without signature verification
+            # In production, use proper JWT verification with Firebase public keys
             decoded_token = jwt.decode(token, options={"verify_signature": False})
-            
-            
-            # Extract user ID from token
-            user_id = decoded_token.get('oid') or decoded_token.get('sub')
+
+            # Validate audience claim against our Firebase project
+            firebase_project_id = os.environ.get('FIREBASE_PROJECT_ID')
+            if firebase_project_id and decoded_token.get('aud') != firebase_project_id:
+                raise ValueError("Token audience does not match Firebase project ID")
+
+            # Extract user ID from token (Firebase always uses 'sub')
+            user_id = decoded_token.get('sub')
             if not user_id:
                 raise ValueError("No user ID found in token")
-            
-            # Basic token validation
+
+            # Basic expiry check
             if 'exp' in decoded_token:
                 exp_timestamp = decoded_token['exp']
                 current_timestamp = datetime.utcnow().timestamp()
                 if current_timestamp > exp_timestamp:
                     raise ValueError("Token has expired")
-            
+
             return user_id
-            
+
         except jwt.InvalidTokenError as e:
             logging.error(f"Invalid JWT token: {str(e)}")
             raise ValueError("Invalid token format")
-            
+
     except Exception as e:
         logging.error(f"Token validation failed: {str(e)}")
         raise ValueError("Token validation failed")
@@ -270,7 +262,7 @@ def get_user_id_from_request(req: func.HttpRequest) -> str:
         return validate_token(req)
     except Exception as token_error:
         logging.warning(f"Token validation failed: {str(token_error)}")
-        
+
         # For development, try to extract user ID from token even if validation fails
         auth_header = req.headers.get('Authorization', '')
         if auth_header.startswith('Bearer '):
@@ -278,13 +270,12 @@ def get_user_id_from_request(req: func.HttpRequest) -> str:
                 token = auth_header[7:]  # Remove 'Bearer ' prefix
                 # Decode token without verification for development
                 decoded_token = jwt.decode(token, options={"verify_signature": False})
-                
-                # Try different possible user ID fields
-                user_id = (decoded_token.get('oid') or 
-                          decoded_token.get('sub') or 
-                          decoded_token.get('objectId') or
-                          decoded_token.get('userId'))
-                
+
+                # Firebase tokens use 'sub'; also accept 'uid' and 'userId' as fallbacks
+                user_id = (decoded_token.get('sub') or
+                           decoded_token.get('uid') or
+                           decoded_token.get('userId'))
+
                 if user_id:
                     return user_id
                 else:

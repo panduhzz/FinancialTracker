@@ -6,11 +6,14 @@
   <title>Financial Tracking - Panduhz</title>
   <link rel="stylesheet" href="financialTracking.css">
   <link rel="stylesheet" href="chart-styles.css">
-                                                                                                                                                    <script>
+                                                                                                                                                        <script>
   window.REACT_APP_API_URL = 'http://localhost:7071/api';
   window.REACT_APP_UPLOAD_API_URL = 'http://localhost:7072/api';
   window.REACT_APP_ENVIRONMENT = 'development';
   window.REACT_APP_DEBUG = true;
+  window.REACT_APP_FIREBASE_API_KEY = 'AIzaSyB8sI0QryEvjMZaBoWfwuOfn5FHRqc-xeo';
+  window.REACT_APP_FIREBASE_AUTH_DOMAIN = 'panduhz-tracker.firebaseapp.com';
+  window.REACT_APP_FIREBASE_PROJECT_ID = 'panduhz-tracker';
 </script>
 </head>
 <body>
@@ -303,9 +306,10 @@
     <p>Processing...</p>
   </div>
 
-  <!-- Include the MSAL.js library -->
-  <script src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
-  
+  <!-- Firebase compat SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+
   <!-- Include Chart.js library -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   
