@@ -1,6 +1,7 @@
 name: Document Intelligence Function Deploy
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
